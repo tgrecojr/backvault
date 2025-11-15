@@ -14,7 +14,7 @@ on:
 env:
   REGISTRY_GHCR: ghcr.io
   REGISTRY_DOCKERHUB: docker.io
-  IMAGE_NAME: ${{ github.repository }}
+  IMAGE_NAME: ${{ github.repository_owner }}/backvault
 
 jobs:
   build-and-push:
@@ -58,7 +58,7 @@ jobs:
         uses: docker/metadata-action@v5
         with:
           images: |
-            ${{ env.REGISTRY_GHCR }}/${{ env.IMAGE_NAME }}
+            ${{ env.REGISTRY_GHCR }}/${{ github.repository_owner }}/backvault
           # Uncomment to add Docker Hub
           # ${{ env.REGISTRY_DOCKERHUB }}/${{ secrets.DOCKERHUB_USERNAME }}/backvault
           tags: |
@@ -80,6 +80,7 @@ jobs:
             org.opencontainers.image.vendor=${{ github.repository_owner }}
 
       - name: Build and push Docker image
+        id: build
         uses: docker/build-push-action@v5
         with:
           context: .
@@ -93,9 +94,9 @@ jobs:
           sbom: false
 
       - name: Generate artifact attestation
-        if: github.event_name != 'pull_request'
+        if: github.event_name != 'pull_request' && steps.build.outputs.digest != ''
         uses: actions/attest-build-provenance@v1
         with:
-          subject-name: ${{ env.REGISTRY_GHCR }}/${{ env.IMAGE_NAME }}
+          subject-name: ${{ env.REGISTRY_GHCR }}/${{ github.repository_owner }}/backvault
           subject-digest: ${{ steps.build.outputs.digest }}
           push-to-registry: true
