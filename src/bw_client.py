@@ -103,6 +103,7 @@ class BitwardenClient:
         """
         self.bw_cmd = bw_cmd
         self.session = session
+        self.server = server  # Store server URL for use in _run method
         self.client_id = client_id
         self.client_secret = client_secret
         self.use_api_key = (
@@ -110,31 +111,8 @@ class BitwardenClient:
         )
         if server:
             logger.info(f"Configuring BW server: {server}")
-            env = os.environ.copy()  # do not add BW_SESSION
-            try:
-                subprocess.run(
-                    [self.bw_cmd, "config", "server", server],
-                    text=True,
-                    capture_output=True,
-                    check=True,
-                    env=env,
-                    preexec_fn=None,  # Disable process group creation
-                )
-            except subprocess.CalledProcessError as e:
-                if e.returncode == 1:
-                    pass
-                else:
-                    logger.error("Bitwarden CLI error configuring server")
-                    logger.error(f"Return code: {e.returncode}")
-                    logger.error(f"stdout: {e.stdout}")
-                    logger.error(f"stderr: {e.stderr}")
-                    raise BitwardenError("Failed to configure BW server") from e
-            except Exception as e:
-                try:
-                    self.logout()
-                except Exception:
-                    pass
-                raise BitwardenError("Failed to configure BW server") from e
+            # Note: We now set environment variables in _run() instead of using bw config server
+            # This is more compatible with recent Bitwarden CLI versions and Vaultwarden
 
     def __enter__(self):
         self.login()
@@ -152,6 +130,18 @@ class BitwardenClient:
         env = os.environ.copy()
         if self.session:
             env["BW_SESSION"] = self.session
+        
+        # Set server URL environment variables for Vaultwarden compatibility
+        # Recent Bitwarden CLI versions require these to be set as environment variables
+        if self.server:
+            # Set the base URL - this works with both old and new CLI versions
+            env["BW_URL"] = self.server
+            # Also set individual endpoint URLs for maximum compatibility
+            # Vaultwarden serves all endpoints from the same base URL
+            env["BW_API_URL"] = f"{self.server}/api"
+            env["BW_IDENTITY_URL"] = f"{self.server}/identity"
+            env["BW_BASE_URL"] = self.server
+        
         full_cmd = [self.bw_cmd] + cmd
 
         # Log command but redact sensitive arguments
@@ -237,6 +227,13 @@ class BitwardenClient:
             env = os.environ.copy()
             env["BW_CLIENTID"] = self.client_id
             env["BW_CLIENTSECRET"] = self.client_secret
+            
+            # Set server URL environment variables for Vaultwarden compatibility
+            if self.server:
+                env["BW_URL"] = self.server
+                env["BW_API_URL"] = f"{self.server}/api"
+                env["BW_IDENTITY_URL"] = f"{self.server}/identity"
+                env["BW_BASE_URL"] = self.server
 
             cmd = [self.bw_cmd, "login", "--apikey"]
 
@@ -286,6 +283,13 @@ class BitwardenClient:
         # Only set BW_SESSION if we have a valid session (not the case after API key login)
         if self.session:
             env["BW_SESSION"] = self.session
+        
+        # Set server URL environment variables for Vaultwarden compatibility
+        if self.server:
+            env["BW_URL"] = self.server
+            env["BW_API_URL"] = f"{self.server}/api"
+            env["BW_IDENTITY_URL"] = f"{self.server}/identity"
+            env["BW_BASE_URL"] = self.server
 
         cmd = [self.bw_cmd, "unlock", password, "--raw"]
         try:
