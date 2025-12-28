@@ -18,6 +18,10 @@ def require_env(name: str) -> str:
     val = os.getenv(name)
     if not val:
         raise RuntimeError(f"Missing required environment variable: {name}")
+    # Strip whitespace and quotes that might be in the environment variable
+    val = val.strip().strip('"').strip("'")
+    if not val:
+        raise RuntimeError(f"Environment variable {name} is empty after stripping whitespace")
     return val
 
 

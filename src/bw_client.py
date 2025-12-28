@@ -104,11 +104,22 @@ class BitwardenClient:
         self.bw_cmd = bw_cmd
         self.session = session
         self.server = server  # Store server URL for use in _run method
-        self.client_id = client_id
-        self.client_secret = client_secret
+        self.client_id = client_id.strip() if client_id else None
+        self.client_secret = client_secret.strip() if client_secret else None
         self.use_api_key = (
             use_api_key and client_id is not None and client_secret is not None
         )
+        
+        # Validate API key format if using API key authentication
+        if self.use_api_key and self.client_id:
+            # Vaultwarden client_id should start with "organization." or "user."
+            if not (self.client_id.startswith("organization.") or self.client_id.startswith("user.")):
+                logger.warning(
+                    f"client_id format may be incorrect. Expected format: 'organization.UUID' or 'user.UUID', "
+                    f"got prefix: '{self.client_id.split('.')[0] if '.' in self.client_id else 'NO_DOT_FOUND'}'"
+                )
+            logger.debug(f"client_id format check: starts with '{self.client_id.split('.')[0]}', length: {len(self.client_id)}")
+        
         if server:
             logger.info(f"Configuring BW server: {server}")
             # Use both bw config server AND environment variables for maximum compatibility
