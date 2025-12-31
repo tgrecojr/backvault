@@ -14,7 +14,7 @@ It’s designed for hands-free, secure, and automated backups using the official
 - ✨ **Two Encryption Modes**: Choose between Bitwarden's native encrypted format or a portable, standard AES-256-GCM encrypted format
 - 🔐 **Security Hardened**: Non-root execution, log redaction, retry logic with exponential backoff
 - 🌐 Works with both Bitwarden Cloud and self-hosted Bitwarden/Vaultwarden
-- 🏗️ **Multi-Architecture Support**: Native images for amd64, arm64, and arm/v7 (Raspberry Pi)
+- 🐧 **Linux x86_64 Support**: Optimized for standard Linux servers
 - 🐳 Runs fully containerized — no setup or local dependencies required
 
 ---
@@ -25,7 +25,7 @@ You can run BackVault directly using the **published Docker image**, no build re
 
 **Available Images:**
 - GitHub Container Registry: `ghcr.io/tgrecojr/backvault:latest`
-- Multi-architecture support: amd64, arm64, arm/v7 (Raspberry Pi compatible)
+- Platform: Linux x86_64 (amd64)
 
 ```bash
 docker run -d \
@@ -313,22 +313,20 @@ docker compose up -d
 
 ---
 
-## 🔄 CI/CD and Multi-Architecture Builds
+## 🔄 CI/CD and Automated Builds
 
 BackVault uses GitHub Actions for automated building and publishing:
 
 ### Automated Workflows
 
-- **Docker Publish**: Builds and publishes multi-arch images on merge to main
+- **Docker Publish**: Builds and publishes Linux x86_64 images on merge to main
 - **Security Scan**: Weekly vulnerability scanning with Trivy and Bandit
 - **Test**: Runs linting and build tests on all PRs
 
-### Supported Architectures
+### Platform Support
 
-Images are automatically built for:
-- `linux/amd64` - Standard x86_64 systems
-- `linux/arm64` - ARM64 systems (Apple Silicon M1/M2, AWS Graviton)
-- `linux/arm/v7` - 32-bit ARM (Raspberry Pi 2+)
+Images are built for:
+- `linux/amd64` - Linux x86_64 systems
 
 ### Using Specific Versions
 
@@ -338,30 +336,19 @@ docker pull ghcr.io/tgrecojr/backvault:latest
 
 # Use specific version (when tagged)
 docker pull ghcr.io/tgrecojr/backvault:v1.0.0
-
-# Use specific architecture
-docker pull --platform linux/arm64 ghcr.io/tgrecojr/backvault:latest
 ```
 
 ### Building Locally
 
-**Important**: If building on macOS, see [BUILD.md](BUILD.md) for detailed platform-specific instructions.
-
-**On macOS (for Linux deployment):**
-```bash
-# Always specify target platform when building on Mac
-docker build --platform linux/amd64 -t backvault:local .
-```
-
 **On Linux:**
 ```bash
-# No --platform flag needed (auto-detects)
 docker build -t backvault:local .
 ```
 
-**Multi-architecture build (requires buildx):**
+**On macOS:**
 ```bash
-docker buildx build --platform linux/amd64,linux/arm64,linux/arm/v7 -t backvault:local .
+# Specify linux/amd64 platform for deployment
+docker build --platform linux/amd64 -t backvault:local .
 ```
 
 For comprehensive build documentation including troubleshooting, see **[BUILD.md](BUILD.md)**.
