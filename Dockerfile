@@ -1,26 +1,25 @@
 # Simple single-stage Dockerfile for BackVault
 # Platform: Linux x86_64 only
-FROM python:3.14-alpine
+FROM python:3.14-slim
 
 # Install runtime and build dependencies
-RUN apk add --no-cache \
+RUN apt-get update && apt-get install -y --no-install-recommends \
     bash \
     ca-certificates \
-    libffi \
-    openssl \
-    dcron \
+    cron \
     gcc \
-    musl-dev \
+    g++ \
     libffi-dev \
-    openssl-dev \
+    libssl-dev \
     cargo \
-    rust \
+    rustc \
     curl \
-    unzip
+    unzip \
+    && rm -rf /var/lib/apt/lists/*
 
 # Create non-root user
-RUN addgroup -g 1000 backvault && \
-    adduser -D -u 1000 -G backvault -h /home/backvault backvault && \
+RUN groupadd -g 1000 backvault && \
+    useradd -u 1000 -g backvault -m -d /home/backvault backvault && \
     mkdir -p /app/backups /var/log && \
     chown -R backvault:backvault /app /var/log /home/backvault
 
@@ -49,8 +48,15 @@ RUN set -eux; \
     rm -f /tmp/bw.zip
 
 # Clean up build dependencies to reduce image size
-RUN apk del gcc musl-dev libffi-dev openssl-dev cargo rust unzip && \
-    rm -rf /var/cache/apk/*
+RUN apt-get purge -y --auto-remove \
+    gcc \
+    g++ \
+    libffi-dev \
+    libssl-dev \
+    cargo \
+    rustc \
+    unzip \
+    && rm -rf /var/lib/apt/lists/*
 
 # Copy application files
 COPY --chown=backvault:backvault ./src /app/
