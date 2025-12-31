@@ -1,20 +1,43 @@
-# Simple single-stage Dockerfile for BackVault
+# Multi-stage Dockerfile for BackVault - Optimized for size
 # Platform: Linux x86_64 only
-FROM python:3.14-slim
 
-# Install runtime and build dependencies
+# ============================================
+# Builder Stage - Compile dependencies
+# ============================================
+FROM python:3.14-slim AS builder
+
+# Install build dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    bash \
-    ca-certificates \
-    cron \
     gcc \
     g++ \
     libffi-dev \
     libssl-dev \
     cargo \
     rustc \
+    && rm -rf /var/lib/apt/lists/*
+
+# Create virtual environment and install Python dependencies
+RUN python -m venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
+
+COPY requirements.txt /tmp/requirements.txt
+RUN pip install --no-cache-dir --upgrade "pip>=25.3" && \
+    pip install --no-cache-dir -r /tmp/requirements.txt
+
+# ============================================
+# Runtime Stage - Minimal runtime environment
+# ============================================
+FROM python:3.14-slim
+
+# Install only runtime dependencies (no -dev packages)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    bash \
+    ca-certificates \
+    cron \
     curl \
     unzip \
+    libffi8 \
+    libssl3 \
     && rm -rf /var/lib/apt/lists/*
 
 # Create non-root user
@@ -28,11 +51,9 @@ WORKDIR /app
 # Set HOME for backvault user
 ENV HOME=/home/backvault
 
-# Install Python dependencies
-COPY requirements.txt /tmp/requirements.txt
-RUN pip install --no-cache-dir --upgrade "pip>=25.3" && \
-    pip install --no-cache-dir -r /tmp/requirements.txt && \
-    rm /tmp/requirements.txt
+# Copy virtual environment from builder
+COPY --from=builder /opt/venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
 
 # Install Bitwarden CLI for Linux x86_64
 RUN set -eux; \
@@ -47,16 +68,9 @@ RUN set -eux; \
     chmod +x /usr/local/bin/bw; \
     rm -f /tmp/bw.zip
 
-# Clean up build dependencies to reduce image size
-RUN apt-get purge -y --auto-remove \
-    gcc \
-    g++ \
-    libffi-dev \
-    libssl-dev \
-    cargo \
-    rustc \
-    unzip \
-    && rm -rf /var/lib/apt/lists/*
+# Remove curl and unzip after bw installation to save space
+RUN apt-get purge -y --auto-remove curl unzip && \
+    rm -rf /var/lib/apt/lists/*
 
 # Copy application files
 COPY --chown=backvault:backvault ./src /app/
