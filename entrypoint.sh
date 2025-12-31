@@ -20,7 +20,7 @@ touch "$LOG_FILE"
 # Function to run backup
 run_backup() {
     echo "$(date '+%Y-%m-%d %H:%M:%S') - Starting backup..."
-    /usr/local/bin/python /app/run.py 2>&1 | tee -a "$LOG_FILE"
+    python /app/run.py 2>&1 | tee -a "$LOG_FILE"
     local exit_code=${PIPESTATUS[0]}
     if [ $exit_code -eq 0 ]; then
         echo "$(date '+%Y-%m-%d %H:%M:%S') - Backup completed successfully"
