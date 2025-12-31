@@ -117,6 +117,9 @@ ENV HOME=/home/backvault
 COPY --from=builder /opt/venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
+# Upgrade pip in the runtime environment to fix CVE-2025-8869
+RUN pip install --upgrade "pip>=25.3"
+
 # Copy Bitwarden CLI from builder
 COPY --from=builder /tmp/bw /usr/local/bin/bw
 
