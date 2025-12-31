@@ -80,6 +80,7 @@ def main():
     # Create client
     logger.info("Connecting to vault...")
     source = BitwardenClient(
+        bw_cmd="bw",
         server=server,
         client_id=client_id,
         client_secret=client_secret,
