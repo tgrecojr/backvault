@@ -23,8 +23,10 @@ ARG TARGETOS
 ARG TARGETARCH
 ARG TARGETVARIANT
 
-# Install required system packages
-RUN apt-get update && apt-get install -y --no-install-recommends \
+# Update system packages to latest versions for security patches
+RUN apt-get update && \
+    apt-get upgrade -y && \
+    apt-get install -y --no-install-recommends \
     curl \
     unzip \
     bash \
@@ -100,7 +102,9 @@ COPY --chown=backvault:backvault requirements.txt /app/requirements.txt
 RUN chmod +x /app/entrypoint.sh /app/cleanup.sh
 
 # Install build dependencies needed for cryptography package and C extensions
-RUN apt-get update && apt-get install -y --no-install-recommends \
+RUN apt-get update && \
+    apt-get upgrade -y && \
+    apt-get install -y --no-install-recommends \
     gcc \
     libc6-dev \
     libffi-dev \
