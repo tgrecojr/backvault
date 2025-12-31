@@ -84,7 +84,7 @@ def retry_with_backoff(
 class BitwardenClient:
     def __init__(
         self,
-        bw_cmd: str = "bw",
+        bw_cmd: str = "/usr/local/bin/bw",
         session: str | None = None,
         server: str | None = None,
         client_id: str | None = None,
@@ -94,7 +94,7 @@ class BitwardenClient:
         """
         Initialize Bitwarden client wrapper.
 
-        :param bw_cmd: Path to bw CLI command (default "bw")
+        :param bw_cmd: Path to bw CLI command (default "/usr/local/bin/bw")
         :param session: Existing BW_SESSION token (optional)
         :param server: Bitwarden server URL (optional, Vaultwarden compatible)
         :param client_id: Client ID for API key login (optional)
