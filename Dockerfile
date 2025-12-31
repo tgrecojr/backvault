@@ -118,7 +118,10 @@ COPY --from=builder /opt/venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
 # Upgrade pip in the runtime environment to fix CVE-2025-8869
-RUN pip install --upgrade "pip>=25.3"
+RUN pip install --upgrade "pip>=25.3" && \
+    # Remove system pip to eliminate duplicate detection by security scanners
+    # The venv pip (25.3+) in /opt/venv/bin will be used via PATH
+    rm -rf /usr/local/lib/python3.12/site-packages/pip* || true
 
 # Copy Bitwarden CLI from builder
 COPY --from=builder /tmp/bw /usr/local/bin/bw
