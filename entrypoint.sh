@@ -56,10 +56,15 @@ echo "Running initial backup on startup..."
 run_backup || true
 
 # Calculate seconds until midnight for daily cleanup
+# Alpine uses busybox date, so we calculate midnight manually
 seconds_until_midnight() {
     local current_epoch=$(date +%s)
-    local midnight_epoch=$(date -d "tomorrow 00:00:00" +%s 2>/dev/null || date -v+1d -v0H -v0M -v0S +%s 2>/dev/null || echo $((current_epoch + 86400)))
-    echo $((midnight_epoch - current_epoch))
+    local current_hour=$(date +%H)
+    local current_min=$(date +%M)
+    local current_sec=$(date +%S)
+    local seconds_since_midnight=$((current_hour * 3600 + current_min * 60 + current_sec))
+    local seconds_until_midnight=$((86400 - seconds_since_midnight))
+    echo $seconds_until_midnight
 }
 
 # Track last cleanup time

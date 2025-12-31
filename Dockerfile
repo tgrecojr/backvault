@@ -1,4 +1,14 @@
-FROM python:3.12-slim-bookworm
+# ============================================================================
+# Multi-stage Alpine-based Dockerfile for BackVault
+# ============================================================================
+# This multi-stage build reduces the final image size and attack surface by
+# separating build-time dependencies from runtime dependencies.
+# ============================================================================
+
+# ============================================================================
+# Stage 1: Builder - Install dependencies and compile packages
+# ============================================================================
+FROM python:3.12-alpine AS builder
 
 # ============================================================================
 # Multi-Platform Build Configuration
@@ -23,28 +33,35 @@ ARG TARGETOS
 ARG TARGETARCH
 ARG TARGETVARIANT
 
-# Update system packages to latest versions for security patches
-RUN apt-get update && \
-    apt-get upgrade -y && \
-    apt-get install -y --no-install-recommends \
+# Install build dependencies for Python packages and Bitwarden CLI download
+RUN apk add --no-cache \
+    gcc \
+    musl-dev \
+    libffi-dev \
+    openssl-dev \
+    cargo \
+    rust \
     curl \
-    unzip \
-    bash \
-    cron \
-    ca-certificates \
-    jq \
-    && rm -rf /var/lib/apt/lists/*
+    unzip
+
+# Create a virtual environment for Python packages
+RUN python -m venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
+
+# Copy requirements and install Python dependencies
+COPY requirements.txt /tmp/requirements.txt
+RUN pip install --upgrade pip && \
+    pip install --no-cache-dir -r /tmp/requirements.txt
 
 # Install Bitwarden CLI with proper architecture detection
-# Downloads the correct binary for the TARGET platform, not the build host
 RUN set -eux; \
     echo "Building for platform: ${TARGETPLATFORM:-linux/amd64}"; \
     echo "Target architecture: ${TARGETARCH}"; \
     \
     # Get latest version from GitHub API
     BW_VERSION=$(curl -s https://api.github.com/repos/bitwarden/clients/releases | \
-                 jq -r '[.[] | select(.tag_name | startswith("cli-v"))] | .[0].tag_name' | \
-                 sed 's/cli-v//') || BW_VERSION="2024.10.2"; \
+                 grep -o '"tag_name": "cli-v[^"]*"' | head -1 | \
+                 sed 's/.*cli-v\([^"]*\).*/\1/') || BW_VERSION="2024.10.2"; \
     \
     echo "Installing Bitwarden CLI version: ${BW_VERSION}"; \
     \
@@ -55,7 +72,6 @@ RUN set -eux; \
         arm64) \
             ARCH_SUFFIX="aarch64" ;; \
         arm) \
-            # arm with variant v7 (Raspberry Pi)
             ARCH_SUFFIX="armv7" ;; \
         *) \
             echo "Unsupported architecture: ${TARGETARCH}"; \
@@ -64,26 +80,31 @@ RUN set -eux; \
     \
     echo "Downloading for architecture: ${ARCH_SUFFIX}"; \
     \
-    # Download the architecture-specific binary from GitHub releases
-    # Bitwarden CLI provides separate binaries for each architecture
-    curl -fsSL "https://github.com/bitwarden/clients/releases/download/cli-v${BW_VERSION}/bw-linux-${ARCH_SUFFIX}-${BW_VERSION}.zip" -o bw.zip || \
-    curl -fsSL "https://vault.bitwarden.com/download/?app=cli&platform=linux&arch=${ARCH_SUFFIX}" -o bw.zip; \
+    # Download the architecture-specific binary
+    curl -fsSL "https://github.com/bitwarden/clients/releases/download/cli-v${BW_VERSION}/bw-linux-${ARCH_SUFFIX}-${BW_VERSION}.zip" -o /tmp/bw.zip || \
+    curl -fsSL "https://vault.bitwarden.com/download/?app=cli&platform=linux&arch=${ARCH_SUFFIX}" -o /tmp/bw.zip; \
     \
-    unzip bw.zip -d /usr/local/bin; \
-    chmod +x /usr/local/bin/bw; \
-    rm bw.zip; \
-    \
-    # Test the binary (may fail due to seccomp, but that's okay)
-    /usr/local/bin/bw --version || echo "Note: bw binary requires seccomp=unconfined at runtime"
+    unzip /tmp/bw.zip -d /tmp; \
+    chmod +x /tmp/bw; \
+    rm /tmp/bw.zip
 
-RUN apt-get remove -y \
-    curl \
-    unzip \
-    && rm -rf /var/lib/apt/lists/*
+# ============================================================================
+# Stage 2: Runtime - Minimal final image with only runtime dependencies
+# ============================================================================
+FROM python:3.12-alpine
+
+# Install only runtime dependencies (no build tools)
+RUN apk add --no-cache \
+    bash \
+    ca-certificates \
+    libffi \
+    openssl \
+    dcron \
+    && rm -rf /var/cache/apk/*
 
 # Create non-root user and group with home directory
-RUN groupadd -r backvault && \
-    useradd -r -g backvault -u 1000 -m -d /home/backvault backvault && \
+RUN addgroup -g 1000 backvault && \
+    adduser -D -u 1000 -G backvault -h /home/backvault backvault && \
     mkdir -p /app/backups /var/log && \
     chown -R backvault:backvault /app /var/log /home/backvault
 
@@ -92,38 +113,20 @@ WORKDIR /app
 # Set HOME environment variable for the backvault user
 ENV HOME=/home/backvault
 
+# Copy Python virtual environment from builder
+COPY --from=builder /opt/venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
+
+# Copy Bitwarden CLI from builder
+COPY --from=builder /tmp/bw /usr/local/bin/bw
+
 # Copy application files
 COPY --chown=backvault:backvault ./src /app/
 COPY --chown=backvault:backvault ./entrypoint.sh /app/entrypoint.sh
 COPY --chown=backvault:backvault ./cleanup.sh /app/cleanup.sh
-COPY --chown=backvault:backvault requirements.txt /app/requirements.txt
 
 # Set execute permissions on scripts
 RUN chmod +x /app/entrypoint.sh /app/cleanup.sh
-
-# Install build dependencies needed for cryptography package and C extensions
-RUN apt-get update && \
-    apt-get upgrade -y && \
-    apt-get install -y --no-install-recommends \
-    gcc \
-    libc6-dev \
-    libffi-dev \
-    libssl-dev \
-    && rm -rf /var/lib/apt/lists/*
-
-# Install Python dependencies
-RUN pip install --upgrade pip && \
-    pip install --no-cache-dir -r requirements.txt
-
-# Remove build dependencies to keep image size small
-RUN apt-get remove -y \
-    gcc \
-    libc6-dev \
-    libffi-dev \
-    libssl-dev \
-    && apt-get autoremove -y \
-    && apt-get clean \
-    && rm -rf /var/lib/apt/lists/*
 
 # Switch to non-root user
 USER backvault
