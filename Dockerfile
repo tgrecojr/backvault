@@ -50,7 +50,7 @@ ENV PATH="/opt/venv/bin:$PATH"
 
 # Copy requirements and install Python dependencies
 COPY requirements.txt /tmp/requirements.txt
-RUN pip install --upgrade pip && \
+RUN pip install --upgrade "pip>=25.3" && \
     pip install --no-cache-dir -r /tmp/requirements.txt
 
 # Install Bitwarden CLI with proper architecture detection
