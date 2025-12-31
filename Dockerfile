@@ -8,7 +8,7 @@
 # ============================================================================
 # Stage 1: Builder - Install dependencies and compile packages
 # ============================================================================
-FROM python:3.12-alpine AS builder
+FROM python:3.14-alpine AS builder
 
 # ============================================================================
 # Multi-Platform Build Configuration
@@ -91,7 +91,7 @@ RUN set -eux; \
 # ============================================================================
 # Stage 2: Runtime - Minimal final image with only runtime dependencies
 # ============================================================================
-FROM python:3.12-alpine
+FROM python:3.14-alpine
 
 # Install only runtime dependencies (no build tools)
 RUN apk add --no-cache \
