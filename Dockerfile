@@ -4,7 +4,7 @@
 # ============================================
 # Builder Stage - Compile dependencies
 # ============================================
-FROM python:3.14-slim@sha256:1a3c6dbfd2173971abba880c3cc2ec4643690901f6ad6742d0827bae6cefc925 AS builder
+FROM python:3.14-slim@sha256:486b8092bfb12997e10d4920897213a06563449c951c5506c2a2cfaf591c599f AS builder
 
 # Install build dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -27,7 +27,7 @@ RUN pip install --no-cache-dir --upgrade "pip>=25.3" && \
 # ============================================
 # Runtime Stage - Minimal runtime environment
 # ============================================
-FROM python:3.14-slim@sha256:1a3c6dbfd2173971abba880c3cc2ec4643690901f6ad6742d0827bae6cefc925
+FROM python:3.14-slim@sha256:486b8092bfb12997e10d4920897213a06563449c951c5506c2a2cfaf591c599f
 
 # Install only runtime dependencies (no -dev packages)
 RUN apt-get update && apt-get install -y --no-install-recommends \
