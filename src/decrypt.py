@@ -1,5 +1,4 @@
 # decrypt.py
-import os
 import sys
 from getpass import getpass
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
