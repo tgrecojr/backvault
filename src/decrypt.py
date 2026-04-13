@@ -18,29 +18,36 @@ ARGON2_TIME_COST = 3
 ARGON2_MEMORY_COST = 65536  # 64 MB in KiB
 ARGON2_PARALLELISM = 4
 
+
 def decrypt_data(encrypted_data: bytes, password: str) -> bytes:
     # Read version header (4 bytes)
     version_num = int.from_bytes(encrypted_data[:4], byteorder="big")
     offset = 4
 
-    salt = encrypted_data[offset:offset+SALT_SIZE]
-    nonce = encrypted_data[offset+SALT_SIZE:offset+SALT_SIZE+12]
-    ciphertext_with_tag = encrypted_data[offset+SALT_SIZE+12:]
+    salt = encrypted_data[offset : offset + SALT_SIZE]
+    nonce = encrypted_data[offset + SALT_SIZE : offset + SALT_SIZE + 12]
+    ciphertext_with_tag = encrypted_data[offset + SALT_SIZE + 12 :]
 
     # Derive key based on version
     if version_num == 1:
         # Legacy PBKDF2 format
-        print(f"Decrypting version {version_num} file (PBKDF2-HMAC-SHA256, {PBKDF2_ITERATIONS:,} iterations)", file=sys.stderr)
+        print(
+            f"Decrypting version {version_num} file (PBKDF2-HMAC-SHA256, {PBKDF2_ITERATIONS:,} iterations)",
+            file=sys.stderr,
+        )
         kdf = PBKDF2HMAC(
             algorithm=hashes.SHA256(),
             length=KEY_SIZE,
             salt=salt,
-            iterations=PBKDF2_ITERATIONS
+            iterations=PBKDF2_ITERATIONS,
         )
         key = kdf.derive(password.encode("utf-8"))
     elif version_num == 2:
         # Current Argon2id format
-        print(f"Decrypting version {version_num} file (Argon2id, {ARGON2_MEMORY_COST // 1024} MB)", file=sys.stderr)
+        print(
+            f"Decrypting version {version_num} file (Argon2id, {ARGON2_MEMORY_COST // 1024} MB)",
+            file=sys.stderr,
+        )
         key = hash_secret_raw(
             secret=password.encode("utf-8"),
             salt=salt,
@@ -57,6 +64,7 @@ def decrypt_data(encrypted_data: bytes, password: str) -> bytes:
     aesgcm = AESGCM(key)
     return aesgcm.decrypt(nonce, ciphertext_with_tag, None)
 
+
 if __name__ == "__main__":
     if len(sys.argv) < 2:
         print(f"Usage: python {sys.argv[0]} <encrypted_file>")
@@ -68,7 +76,7 @@ if __name__ == "__main__":
     try:
         with open(file_path, "rb") as f:
             encrypted_contents = f.read()
-        
+
         decrypted_json = decrypt_data(encrypted_contents, password)
         print(decrypted_json.decode("utf-8"))
         print("\nDecryption successful.", file=sys.stderr)
