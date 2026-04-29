@@ -5,7 +5,6 @@
     ":disableRateLimiting",
     ":dependencyDashboard",
     ":semanticCommits",
-    ":enablePreCommit",
     "docker:enableMajor",
     ":timezone(America/New_York)"
   ],
@@ -14,6 +13,7 @@
     "before 5am every weekday",
     "every weekend"
   ],
+  "ignoreDeps": ["ghcr.io/yourusername/backvault"],
   "prConcurrentLimit": 3,
   "prCreation": "immediate",
   "rebaseWhen": "behind-base-branch",
@@ -21,88 +21,43 @@
   "platformAutomerge": true,
   "packageRules": [
     {
-      "matchCategories": [
-        "docker"
-      ],
+      "description": "Pin digests for all Docker images",
+      "matchDatasources": ["docker"],
       "pinDigests": true
     },
     {
-      "description": "Auto-merge non-major updates for stable images",
-      "matchDatasources": [
-        "docker"
-      ],
-      "matchUpdateTypes": [
-        "minor",
-        "patch",
-        "digest"
-      ],
-      "automerge": true,
-      "automergeType": "branch"
-    },
-    {
-      "description": "Group all minor and patch updates together",
-      "matchUpdateTypes": [
-        "minor",
-        "patch"
-      ],
+      "description": "Group all minor and patch updates together with a 3-day stability window",
+      "matchUpdateTypes": ["minor", "patch"],
       "groupName": "all non-major dependencies",
       "groupSlug": "all-minor-patch",
-      "automerge": true
-    },
-    {
-      "description": "Disable auto-merge for major updates - need review",
-      "matchUpdateTypes": [
-        "major"
-      ],
-      "automerge": false,
-      "labels": [
-        "major-update"
-      ]
-    },
-    {
-      "description": "Auto-merge digest updates daily",
-      "matchUpdateTypes": [
-        "digest"
-      ],
       "automerge": true,
-      "schedule": [
-        "at any time"
-      ],
-      "minimumReleaseAge": null
-    },
-    {
-      "description": "Stability period for minor/patch before auto-merge",
-      "matchUpdateTypes": [
-        "minor",
-        "patch"
-      ],
       "minimumReleaseAge": "3 days"
     },
     {
-      "description": "Common stable images - faster auto-merge",
-      "matchDatasources": [
-        "docker"
-      ],
-      "matchPackageNames": [
-        "postgres",
-        "mariadb",
-        "nginx",
-        "redis",
-        "traefik"
-      ],
-      "minimumReleaseAge": "1 day"
+      "description": "Disable auto-merge for major updates - need review",
+      "matchUpdateTypes": ["major"],
+      "automerge": false,
+      "labels": ["major-update"]
+    },
+    {
+      "description": "Auto-merge digest updates immediately (no stability delay)",
+      "matchUpdateTypes": ["digest"],
+      "automerge": true,
+      "schedule": ["at any time"],
+      "minimumReleaseAge": null
+    },
+    {
+      "description": "Python (pip) deps follow the all-minor-patch group; called out for visibility",
+      "matchManagers": ["pip_requirements"],
+      "matchUpdateTypes": ["minor", "patch"]
     }
   ],
   "vulnerabilityAlerts": {
     "enabled": true,
-    "labels": [
-      "security"
-    ]
+    "labels": ["security"]
   },
   "lockFileMaintenance": {
     "enabled": true,
-    "schedule": [
-      "before 4am on monday"
-    ]
+    "schedule": ["before 4am on monday"]
   }
 }
