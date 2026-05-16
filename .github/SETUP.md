@@ -219,7 +219,7 @@ If it does:
 **Action:**
 1. Review the vulnerabilities
 2. Update base image if needed
-3. Update dependencies: `pip install --upgrade -r requirements.txt`
+3. Update dependencies: `uv lock --upgrade && uv sync`
 
 ### Workflow Not Triggering
 
