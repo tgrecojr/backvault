@@ -366,20 +366,20 @@ See LICENSE for details.
 
 ### Running Tests
 
-BackVault uses pytest for testing:
+BackVault uses [uv](https://docs.astral.sh/uv/) for Python environment and dependency management and pytest for testing:
 
 ```bash
-# Install development dependencies
-pip install -r requirements-dev.txt
+# Install development dependencies (creates .venv and installs from uv.lock)
+uv sync --frozen
 
 # Run all tests
-pytest
+uv run pytest
 
 # Run with verbose output
-pytest -v
+uv run pytest -v
 
 # Run with coverage
-pytest --cov=src --cov-report=html
+uv run pytest --cov=src --cov-report=html
 ```
 
 ### Test Suite
@@ -395,10 +395,10 @@ All tests run automatically in CI/CD on every push and pull request.
 
 ```bash
 # Run linting
-ruff check src/
+uv run ruff check src/
 
 # Auto-format code
-ruff format src/
+uv run ruff format src/
 ```
 
 See [CONTRIBUTING.md](.github/CONTRIBUTING.md) for detailed development guidelines.

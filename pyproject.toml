@@ -1,0 +1,40 @@
+[project]
+name = "backvault"
+version = "0.1.0"
+description = "Dockerized service that periodically backs up Bitwarden/Vaultwarden vaults into password-protected encrypted files."
+readme = "README.md"
+requires-python = ">=3.14"
+license = { text = "AGPL-3.0-only" }
+dependencies = [
+    "cryptography",
+    "argon2-cffi",
+]
+
+[dependency-groups]
+dev = [
+    "ruff>=0.14.2",
+    "pytest>=7.4.0",
+    "pytest-cov>=4.1.0",
+]
+
+[tool.uv]
+package = false
+
+[tool.pytest.ini_options]
+minversion = "7.0"
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = [
+    "-v",
+    "-ra",
+    "--tb=short",
+    "--strict-markers",
+]
+markers = [
+    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+    "integration: marks tests as integration tests",
+    "unit: marks tests as unit tests",
+    "security: marks tests that verify security properties",
+]

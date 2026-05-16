@@ -1,28 +1,24 @@
+# syntax=docker/dockerfile:1.7
 # Multi-stage Dockerfile for BackVault - Optimized for size
 # Platform: Linux x86_64 only
 
 # ============================================
-# Builder Stage - Compile dependencies
+# Builder Stage - Install Python dependencies via uv
 # ============================================
 FROM python:3.14-slim@sha256:7a500125bc50693f2214e842a621440a1b1b9cbb2188f74ab045d29ed2ea5856 AS builder
 
-# Install build dependencies
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    gcc \
-    g++ \
-    libffi-dev \
-    libssl-dev \
-    cargo \
-    rustc \
-    && rm -rf /var/lib/apt/lists/*
+COPY --from=ghcr.io/astral-sh/uv:0.11 /uv /uvx /usr/local/bin/
 
-# Create virtual environment and install Python dependencies
-RUN python -m venv /opt/venv
-ENV PATH="/opt/venv/bin:$PATH"
+WORKDIR /app
 
-COPY requirements.txt /tmp/requirements.txt
-RUN pip install --no-cache-dir --upgrade "pip>=25.3" && \
-    pip install --no-cache-dir -r /tmp/requirements.txt
+ENV UV_PROJECT_ENVIRONMENT=/app/.venv \
+    UV_LINK_MODE=copy \
+    UV_COMPILE_BYTECODE=1 \
+    UV_PYTHON_DOWNLOADS=never
+
+COPY pyproject.toml uv.lock ./
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --frozen --no-dev --no-install-project
 
 # ============================================
 # Runtime Stage - Minimal runtime environment
@@ -52,8 +48,8 @@ WORKDIR /app
 ENV HOME=/home/backvault
 
 # Copy virtual environment from builder
-COPY --from=builder /opt/venv /opt/venv
-ENV PATH="/opt/venv/bin:$PATH"
+COPY --from=builder /app/.venv /app/.venv
+ENV PATH="/app/.venv/bin:$PATH"
 
 # Install Bitwarden CLI for Linux x86_64
 RUN set -eux; \

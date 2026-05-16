@@ -11,20 +11,23 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v6
 
-      - name: Set up Python
-        uses: actions/setup-python@v6
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v6
         with:
-          python-version: '3.14'
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
 
-      - name: Install dependencies
-        run: |
-          pip install ruff
+      - name: Install Python
+        run: uv python install 3.14
+
+      - name: Sync dependencies
+        run: uv sync --frozen
 
       - name: Run Ruff linter
-        run: ruff check src/
+        run: uv run ruff check src/
 
       - name: Run Ruff formatter check
-        run: ruff format --check src/
+        run: uv run ruff format --check src/
 
   pytest:
     name: Run Unit Tests
@@ -34,18 +37,20 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v6
 
-      - name: Set up Python
-        uses: actions/setup-python@v6
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v6
         with:
-          python-version: '3.14'
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
 
-      - name: Install dependencies
-        run: |
-          pip install -r requirements-dev.txt
+      - name: Install Python
+        run: uv python install 3.14
+
+      - name: Sync dependencies
+        run: uv sync --frozen
 
       - name: Run pytest
-        run: |
-          pytest tests/ -v --tb=short
+        run: uv run pytest tests/ -v --tb=short
 
   docker-build-test:
     name: Test Docker Build

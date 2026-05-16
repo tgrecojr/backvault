@@ -7,7 +7,8 @@ Thank you for your interest in contributing to BackVault! This document provides
 ### Prerequisites
 
 - Docker and Docker Compose
-- Python 3.12+
+- Python 3.14+
+- [uv](https://docs.astral.sh/uv/) for Python environment and dependency management
 - Git
 
 ### Local Development
@@ -20,28 +21,28 @@ Thank you for your interest in contributing to BackVault! This document provides
 
 2. **Install development dependencies:**
    ```bash
-   pip install -r requirements-dev.txt
+   uv sync --frozen
    ```
 
 3. **Run tests:**
    ```bash
    # Run all tests
-   pytest
+   uv run pytest
 
    # Run with verbose output
-   pytest -v
+   uv run pytest -v
 
    # Run specific test file
-   pytest tests/test_encryption.py
+   uv run pytest tests/test_encryption.py
 
    # Run with coverage report
-   pytest --cov=src --cov-report=html
+   uv run pytest --cov=src --cov-report=html
    ```
 
 4. **Run linting:**
    ```bash
-   ruff check src/
-   ruff format src/
+   uv run ruff check src/
+   uv run ruff format src/
    ```
 
 5. **Build Docker image locally:**
@@ -237,13 +238,13 @@ Before submitting a PR, run the test suite:
 
 ```bash
 # Run all tests
-pytest
+uv run pytest
 
 # Run with coverage
-pytest --cov=src --cov-report=term-missing
+uv run pytest --cov=src --cov-report=term-missing
 
 # Run specific test class
-pytest tests/test_encryption.py::TestArgon2Encryption -v
+uv run pytest tests/test_encryption.py::TestArgon2Encryption -v
 ```
 
 ### Test Coverage
@@ -257,8 +258,8 @@ We have comprehensive test coverage for:
 
 Before submitting a PR, test:
 
-- [ ] All pytest tests pass (`pytest`)
-- [ ] Linting passes (`ruff check src/`)
+- [ ] All pytest tests pass (`uv run pytest`)
+- [ ] Linting passes (`uv run ruff check src/`)
 - [ ] Docker image builds successfully
 - [ ] Container starts without errors
 - [ ] Backup creation works
