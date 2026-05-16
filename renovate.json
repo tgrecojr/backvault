@@ -47,8 +47,8 @@
       "minimumReleaseAge": null
     },
     {
-      "description": "Python (pip) deps follow the all-minor-patch group; called out for visibility",
-      "matchManagers": ["pip_requirements"],
+      "description": "Python (pep621/uv) deps follow the all-minor-patch group; called out for visibility",
+      "matchManagers": ["pep621"],
       "matchUpdateTypes": ["minor", "patch"]
     }
   ],
