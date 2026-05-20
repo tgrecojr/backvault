@@ -5,7 +5,7 @@
 # ============================================
 # Builder Stage - Install Python dependencies via uv
 # ============================================
-FROM python:3.14-slim@sha256:7a500125bc50693f2214e842a621440a1b1b9cbb2188f74ab045d29ed2ea5856 AS builder
+FROM python:3.14-slim@sha256:a7185a8e40af01bf891414a4df16ef10fc6000cee460a404a13da9029fe41604 AS builder
 
 COPY --from=ghcr.io/astral-sh/uv:0.11@sha256:e590846f4776907b254ac0f44b5b380347af5d90d668138ca7938d1b0c2f98d3 /uv /uvx /usr/local/bin/
 
@@ -23,7 +23,7 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 # ============================================
 # Runtime Stage - Minimal runtime environment
 # ============================================
-FROM python:3.14-slim@sha256:7a500125bc50693f2214e842a621440a1b1b9cbb2188f74ab045d29ed2ea5856
+FROM python:3.14-slim@sha256:a7185a8e40af01bf891414a4df16ef10fc6000cee460a404a13da9029fe41604
 
 # Install only runtime dependencies (no -dev packages)
 RUN apt-get update && apt-get install -y --no-install-recommends \
