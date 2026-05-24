@@ -196,15 +196,12 @@ class BitwardenClient:
     ) -> str | None:
         """Register the device with the server using the personal API key.
 
-        rbw's `register` is idempotent — if already registered, it returns quickly.
-        After register, no separate `login` step is required.
+        rbw reads `email` and `base_url` from config.json (written in __init__)
+        and the API key from BW_CLIENTID / BW_CLIENTSECRET env vars. `register`
+        is idempotent — subsequent calls are no-ops once the device is enrolled.
         """
         logger.info("Registering device with vault server via API key")
-        # rbw register <email> <base_url>
-        self._run(
-            ["register", self.email, self.server],
-            include_api_key=True,
-        )
+        self._run(["register"], include_api_key=True)
         logger.info("Device registered (or already registered)")
         return None
 
