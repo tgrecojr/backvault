@@ -68,6 +68,7 @@ ENV PATH="/app/.venv/bin:$PATH" \
     XDG_CONFIG_HOME=/app/.config \
     XDG_DATA_HOME=/app/.local/share \
     XDG_RUNTIME_DIR=/tmp/rbw-runtime \
-    RBW_PINENTRY=/app/pinentry.py
+    RBW_PINENTRY=/app/pinentry.py \
+    RUST_LOG=rbw=debug
 
 ENTRYPOINT ["python", "/app/entrypoint.py"]
