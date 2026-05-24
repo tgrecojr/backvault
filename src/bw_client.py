@@ -202,15 +202,19 @@ class BitwardenClient:
     def login(
         self, email: str | None = None, password: str | None = None, raw: bool = True
     ) -> str | None:
-        """Register the device with the server using the personal API key.
+        """Log in to the vault server with email + master password.
 
-        rbw reads `email` and `base_url` from config.json (written in __init__)
-        and the API key from BW_CLIENTID / BW_CLIENTSECRET env vars. `register`
-        is idempotent — subsequent calls are no-ops once the device is enrolled.
+        rbw's `login` performs the prelogin → /identity/connect/token (password
+        grant) handshake. The master password is supplied via pinentry (which
+        reads BW_PASSWORD from env). `email` and `base_url` come from config.json.
+
+        Note: `rbw register` is for Bitwarden Cloud's bot-detection bypass via
+        personal API key — it does not apply to self-hosted Vaultwarden, and
+        `rbw login` is the correct entry point there.
         """
-        logger.info("Registering device with vault server via API key")
-        self._run(["register"], include_api_key=True)
-        logger.info("Device registered (or already registered)")
+        logger.info("Logging in to vault server")
+        self._run(["login"])
+        logger.info("Logged in successfully")
         return None
 
     @retry_with_backoff(max_attempts=3, base_delay=2.0)
