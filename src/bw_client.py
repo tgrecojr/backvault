@@ -1,56 +1,46 @@
-import os
-import subprocess
+"""Vault client backed by the rbw CLI (replaces the Bitwarden CLI)."""
+
 import json
 import logging
+import os
 import re
+import subprocess
 import time
-from typing import Any, Callable
-from sys import stdout
-from pathlib import Path
 from functools import wraps
-from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+from pathlib import Path
+from sys import stdout
+from typing import Any, Callable
+
 from argon2.low_level import Type, hash_secret_raw
+from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
-# Constants for encryption
+# Encryption constants
 SALT_SIZE = 16
-KEY_SIZE = 32  # For AES-256
+KEY_SIZE = 32  # AES-256
 
-# PBKDF2 parameters (legacy - version 1)
-PBKDF2_ITERATIONS = 600000  # OWASP 2023 recommendation
-
-# Argon2id parameters (current - version 2)
-ARGON2_TIME_COST = 3  # Number of iterations
+# Argon2id parameters (current — version 2)
+ARGON2_TIME_COST = 3
 ARGON2_MEMORY_COST = 65536  # 64 MB in KiB
-ARGON2_PARALLELISM = 4  # Number of parallel threads
+ARGON2_PARALLELISM = 4
 
-ENCRYPTION_VERSION = 2  # File format version for future compatibility
+ENCRYPTION_VERSION = 2  # File format version
 
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s %(levelname)s: %(message)s",
-    handlers=[logging.FileHandler("/var/log/cron.log"), logging.StreamHandler(stdout)],
+    handlers=[logging.StreamHandler(stdout)],
 )
 
 logger = logging.getLogger(__name__)
 
 
 class BitwardenError(Exception):
-    """Base exception for Bitwarden wrapper."""
-
-    pass
+    """Base exception for the vault client wrapper."""
 
 
 def retry_with_backoff(
     max_attempts: int = 3, base_delay: float = 2.0, max_delay: float = 30.0
 ):
-    """
-    Decorator to retry a function with exponential backoff on BitwardenError.
-
-    :param max_attempts: Maximum number of retry attempts
-    :param base_delay: Initial delay in seconds (doubles with each retry)
-    :param max_delay: Maximum delay between retries in seconds
-    """
-
     def decorator(func: Callable) -> Callable:
         @wraps(func)
         def wrapper(*args, **kwargs):
@@ -61,19 +51,16 @@ def retry_with_backoff(
                 except BitwardenError as e:
                     last_exception = e
                     if attempt == max_attempts - 1:
-                        # Last attempt failed, re-raise
                         logger.error(
                             f"{func.__name__} failed after {max_attempts} attempts"
                         )
                         raise
-                    # Calculate delay with exponential backoff
                     delay = min(base_delay * (2**attempt), max_delay)
                     logger.warning(
                         f"{func.__name__} attempt {attempt + 1}/{max_attempts} failed: {e}. "
                         f"Retrying in {delay:.1f} seconds..."
                     )
                     time.sleep(delay)
-            # Should not reach here, but just in case
             raise last_exception
 
         return wrapper
@@ -82,63 +69,48 @@ def retry_with_backoff(
 
 
 class BitwardenClient:
+    """Wraps the rbw CLI for vault sync + export."""
+
     def __init__(
         self,
-        bw_cmd: str = "/usr/local/bin/bw",
+        bw_cmd: str = "/usr/bin/rbw",
         session: str | None = None,
         server: str | None = None,
+        email: str | None = None,
         client_id: str | None = None,
         client_secret: str | None = None,
         use_api_key: bool = True,
+        pinentry: str = "/app/pinentry.py",
+        config_dir: str = "/app/.config/rbw",
     ):
         """
-        Initialize Bitwarden client wrapper.
-
-        :param bw_cmd: Path to bw CLI command (default "/usr/local/bin/bw")
-        :param session: Existing BW_SESSION token (optional)
-        :param server: Bitwarden server URL (optional, Vaultwarden compatible)
-        :param client_id: Client ID for API key login (optional)
-        :param client_secret: Client Secret for API key login (optional)
-        :param use_api_key: Whether to use API key login if client_id and client_secret are provided (Default to True)
+        :param bw_cmd: Path to the rbw binary
+        :param server: Vault server URL (Vaultwarden compatible)
+        :param email: Vault account email (required by rbw config)
+        :param client_id: Personal API key client_id (for `rbw register`)
+        :param client_secret: Personal API key client_secret (for `rbw register`)
+        :param use_api_key: Reserved for parity; rbw always uses API-key register here
+        :param pinentry: Path to the pinentry binary that returns the master password
+        :param config_dir: Path where rbw config.json lives
         """
         self.bw_cmd = bw_cmd
-        self.session = session
-        self.server = server  # Store server URL for use in _run method
+        self.session = session  # Retained for interface parity; rbw manages its own session
+        self.server = server
+        self.email = email
         self.client_id = client_id
         self.client_secret = client_secret
         self.use_api_key = (
             use_api_key and client_id is not None and client_secret is not None
         )
-        if server:
-            logger.info(f"Configuring BW server: {server}")
-            # Use both bw config server AND environment variables for maximum compatibility
-            # Set environment variables with server URLs
-            env = os.environ.copy()
-            if self.server:
-                env["BW_URL"] = self.server
+        self.pinentry = pinentry
+        self.config_dir = Path(config_dir)
 
-            try:
-                subprocess.run(
-                    [self.bw_cmd, "config", "server", server],
-                    text=True,
-                    capture_output=True,
-                    check=True,
-                    env=env,
-                    preexec_fn=None,
-                )
-                logger.debug("Server configured successfully")
-            except subprocess.CalledProcessError as e:
-                # Some CLI versions return exit code 1 even on success
-                # Log but don't fail - environment variables will be used as fallback
-                logger.debug(
-                    f"bw config server returned code {e.returncode}, will use environment variables"
-                )
-            except Exception as e:
-                logger.warning(
-                    f"Could not run bw config server: {e}, will use environment variables"
-                )
-            # Note: We now set environment variables in _run() instead of using bw config server
-            # This is more compatible with recent Bitwarden CLI versions and Vaultwarden
+        if not self.email:
+            raise BitwardenError("BW_EMAIL is required for the rbw-backed client")
+        if not self.server:
+            raise BitwardenError("BW_SERVER is required for the rbw-backed client")
+
+        self._write_config()
 
     def __enter__(self):
         self.login()
@@ -147,220 +119,136 @@ class BitwardenClient:
     def __exit__(self, exc_type, exc_val, exc_tb):
         self.logout()
 
-    def _run(self, cmd: list[str], capture_json: bool = True) -> Any:
-        """
-        Run a bw CLI command safely.
-        :param cmd: list of arguments, e.g., ["list", "items"]
-        :param capture_json: parse stdout as JSON if True
-        """
+    # -------------------------------
+    # Config management
+    # -------------------------------
+    def _write_config(self) -> None:
+        """Write rbw's config.json from constructor inputs."""
+        self.config_dir.mkdir(parents=True, exist_ok=True)
+        config_path = self.config_dir / "config.json"
+        config = {
+            "email": self.email,
+            "base_url": self.server,
+            "identity_url": None,
+            "ui_url": None,
+            "notifications_url": None,
+            "client_cert_path": None,
+            "lock_timeout": 3600,
+            "sync_interval": 3600,
+            "pinentry": self.pinentry,
+            "device_id": None,
+        }
+        config_path.write_text(json.dumps(config, indent=2))
+        logger.info(f"Wrote rbw config to {config_path}")
+
+    def _env(self, include_api_key: bool = False) -> dict[str, str]:
         env = os.environ.copy()
-        if self.session:
-            env["BW_SESSION"] = self.session
+        # rbw reads XDG_CONFIG_HOME for config.json
+        env.setdefault("XDG_CONFIG_HOME", str(self.config_dir.parent))
+        if include_api_key:
+            if self.client_id:
+                env["BW_CLIENTID"] = self.client_id
+            if self.client_secret:
+                env["BW_CLIENTSECRET"] = self.client_secret
+        return env
 
-        # Set server URL environment variable for Vaultwarden compatibility
-        if self.server:
-            env["BW_URL"] = self.server
-
+    def _run(
+        self,
+        cmd: list[str],
+        capture_json: bool = False,
+        include_api_key: bool = False,
+        check: bool = True,
+    ) -> Any:
         full_cmd = [self.bw_cmd] + cmd
-
-        # Log command but redact sensitive arguments
-        safe_cmd = self._redact_sensitive_args(full_cmd)
-        logger.info(f"Running command: {' '.join(safe_cmd)}")
-
+        logger.info(f"Running command: {' '.join(full_cmd)}")
         try:
             result = subprocess.run(
                 full_cmd,
                 text=True,
                 capture_output=True,
-                check=True,
-                env=env,
-                preexec_fn=None,  # Disable process group creation
+                check=check,
+                env=self._env(include_api_key=include_api_key),
             )
         except subprocess.CalledProcessError as e:
-            logger.error(f"Bitwarden CLI command failed with exit code {e.returncode}")
+            logger.error(f"rbw command failed with exit code {e.returncode}")
             logger.error(f"stdout: {e.stdout}")
             logger.error(f"stderr: {e.stderr}")
-            logger.error(f"Command: {' '.join(safe_cmd)}")
-            raise BitwardenError("Bitwarden CLI command failed") from e
+            logger.error(f"Command: {' '.join(full_cmd)}")
+            raise BitwardenError("rbw command failed") from e
 
         output = result.stdout.strip()
         if capture_json:
             try:
                 return json.loads(output)
             except json.JSONDecodeError as e:
-                logger.error("Failed to parse JSON output from Bitwarden CLI")
+                logger.error("Failed to parse JSON output from rbw")
                 raise BitwardenError("Failed to parse JSON output") from e
-        else:
-            return output
-
-    def _redact_sensitive_args(self, cmd: list[str]) -> list[str]:
-        """
-        Redact sensitive arguments from command list for safe logging.
-        """
-        redacted = []
-        skip_next = False
-        sensitive_flags = {"--password", "--raw"}
-        sensitive_commands = {"unlock"}
-
-        for i, arg in enumerate(cmd):
-            if skip_next:
-                redacted.append("***REDACTED***")
-                skip_next = False
-            elif arg in sensitive_flags:
-                redacted.append(arg)
-                skip_next = True
-            elif arg in sensitive_commands and i + 1 < len(cmd):
-                redacted.append(arg)
-                skip_next = True
-            else:
-                redacted.append(arg)
-
-        return redacted
+        return output
 
     # -------------------------------
     # Core API methods
     # -------------------------------
-    def logout(self) -> None:
-        """Logout and clear session"""
-        self._run(["logout"], capture_json=False)
-        self.session = None
-        logger.info("Logged out successfully")
-
-    def status(self) -> dict[str, Any]:
-        """Return current session status"""
-        return self._run(["status"])
-
     @retry_with_backoff(max_attempts=3, base_delay=2.0)
     def login(
         self, email: str | None = None, password: str | None = None, raw: bool = True
-    ) -> str:
+    ) -> str | None:
+        """Register the device with the server using the personal API key.
+
+        rbw's `register` is idempotent — if already registered, it returns quickly.
+        After register, no separate `login` step is required.
         """
-        Login with email/password or API key.
-        Returns session key if raw=True.
-        Retries up to 3 times with exponential backoff on failure.
-        """
-        if self.use_api_key:
-            logger.info("Logging in via API key")
-
-            # Ensure env vars are set so bw login --apikey is non-interactive
-            env = os.environ.copy()
-            env["BW_CLIENTID"] = self.client_id
-            env["BW_CLIENTSECRET"] = self.client_secret
-
-            # Set server URL environment variables for Vaultwarden compatibility
-            # Try simpler approach - just set BW_URL
-            if self.server:
-                env["BW_URL"] = self.server
-                # Debug: Log that we're setting the server
-                logger.debug(f"Setting BW_URL to: {self.server}")
-                logger.debug(
-                    f"Client ID length: {len(self.client_id) if self.client_id else 0}"
-                )
-                logger.debug(
-                    f"Client Secret length: {len(self.client_secret) if self.client_secret else 0}"
-                )
-
-            cmd = [self.bw_cmd, "login", "--apikey"]
-
-            # Run CLI
-            try:
-                result = subprocess.run(
-                    cmd, capture_output=True, text=True, check=True, env=env
-                )
-            except subprocess.CalledProcessError as e:
-                logger.error("Bitwarden CLI login failed")
-                logger.error(f"Return code: {e.returncode}")
-                logger.error(f"stdout: {e.stdout}")
-                logger.error(f"stderr: {e.stderr}")
-                logger.error(f"Command: {' '.join(cmd)}")
-                try:
-                    self.logout()
-                except Exception:
-                    pass
-                raise BitwardenError("Bitwarden CLI login failed") from e
-
-            # API key login doesn't return a session token - that comes from unlock
-            logger.info("Logged in successfully via API key")
-            logger.debug(f"Login output: {result.stdout.strip()}")
-            # Don't set self.session here - it will be set by unlock()
-
-        else:
-            logger.info("Logging in via email/password")
-            cmd = ["login", email]
-            if password:
-                cmd += ["--password", password]
-            if raw:
-                cmd.append("--raw")
-            self.session = self._run(cmd, capture_json=False)
-            logger.info("Logged in successfully")
-
-        # Note: For API key login, session will be None until unlock() is called
-        return self.session
+        logger.info("Registering device with vault server via API key")
+        # rbw register <email> <base_url>
+        self._run(
+            ["register", self.email, self.server],
+            include_api_key=True,
+        )
+        logger.info("Device registered (or already registered)")
+        return None
 
     @retry_with_backoff(max_attempts=3, base_delay=2.0)
-    def unlock(self, password: str) -> str:
+    def unlock(self, password: str) -> str | None:
+        """Unlock the vault. Password is sourced via pinentry (BW_PASSWORD env).
+
+        The `password` arg is accepted for interface parity but ignored — rbw
+        always reads from pinentry. Callers must set BW_PASSWORD in the env
+        that this process runs under.
         """
-        Unlock vault with master password or API key secret.
-        Returns session token.
-        Retries up to 3 times with exponential backoff on failure.
-        """
-        env = os.environ.copy()
-        # Only set BW_SESSION if we have a valid session (not the case after API key login)
-        if self.session:
-            env["BW_SESSION"] = self.session
-
-        # Set server URL environment variable for Vaultwarden compatibility
-        if self.server:
-            env["BW_URL"] = self.server
-
-        cmd = [self.bw_cmd, "unlock", password, "--raw"]
-        try:
-            result = subprocess.run(
-                cmd, capture_output=True, text=True, check=True, env=env
-            )
-        except subprocess.CalledProcessError as e:
-            logger.error("Bitwarden CLI unlock failed. Logging out.")
-            logger.error(f"Return code: {e.returncode}")
-            logger.error(f"stdout: {e.stdout}")
-            logger.error(f"stderr: {e.stderr}")
-            # Don't log the password in the command
-            safe_cmd = [self.bw_cmd, "unlock", "***REDACTED***", "--raw"]
-            logger.error(f"Command: {' '.join(safe_cmd)}")
-            try:
-                self.logout()
-            except Exception:
-                pass
-            raise BitwardenError("Bitwarden CLI unlock failed") from e
-
-        self.session = result.stdout.strip()
+        if not os.environ.get("BW_PASSWORD"):
+            raise BitwardenError("BW_PASSWORD must be set in env for rbw unlock")
+        logger.info("Unlocking vault via rbw")
+        self._run(["unlock"])
         logger.info("Vault unlocked successfully")
-        return self.session
+        return None
 
+    def logout(self) -> None:
+        """Lock the vault and stop the rbw agent."""
+        try:
+            self._run(["lock"], check=False)
+        except BitwardenError:
+            pass
+        try:
+            self._run(["stop-agent"], check=False)
+        except BitwardenError:
+            pass
+        logger.info("Locked vault and stopped rbw agent")
+
+    def status(self) -> dict[str, Any]:
+        """Return a minimal status dict (rbw doesn't expose a structured status)."""
+        return {"backend": "rbw"}
+
+    # -------------------------------
+    # Encryption
+    # -------------------------------
     def encrypt_data(self, data: bytes, password: str) -> bytes:
-        """
-        Encrypts data using AES-256-GCM with a key derived from the password.
-        Format: version (4 bytes) + salt (16 bytes) + nonce (12 bytes) + ciphertext + tag (16 bytes)
+        """Encrypt data with AES-256-GCM keyed off Argon2id(password, salt).
 
-        Version 2 format (current):
-        - Key derivation: Argon2id
-        - Time cost: 3 iterations
-        - Memory cost: 64 MB
-        - Parallelism: 4 threads
-        - Encryption: AES-256-GCM
-
-        Version 1 format (legacy):
-        - PBKDF2 iterations: 600,000
-        - Key derivation: PBKDF2-HMAC-SHA256
-        - Encryption: AES-256-GCM
+        Layout: version(4) || salt(16) || nonce(12) || ciphertext || tag(16)
         """
         logger.info("Encrypting data in-memory...")
-
-        # Add version header for future compatibility
         version = ENCRYPTION_VERSION.to_bytes(4, byteorder="big")
-
         salt = os.urandom(SALT_SIZE)
 
-        # Derive a key from the password and salt using Argon2id
         key = hash_secret_raw(
             secret=password.encode("utf-8"),
             salt=salt,
@@ -368,30 +256,25 @@ class BitwardenClient:
             memory_cost=ARGON2_MEMORY_COST,
             parallelism=ARGON2_PARALLELISM,
             hash_len=KEY_SIZE,
-            type=Type.ID,  # Argon2id
+            type=Type.ID,
         )
 
-        # Encrypt using AES-GCM
         aesgcm = AESGCM(key)
-        nonce = os.urandom(12)  # GCM recommended nonce size
+        nonce = os.urandom(12)
         ciphertext = aesgcm.encrypt(nonce, data, None)
 
         logger.info(f"Encryption successful (Version {ENCRYPTION_VERSION}, Argon2id).")
         return version + salt + nonce + ciphertext
 
+    # -------------------------------
+    # Path validation
+    # -------------------------------
     def _validate_backup_path(
         self, backup_file: str, allowed_base: str = "/app/backups"
     ) -> str:
-        """
-        Validate that the backup file path is within the allowed directory.
-        Prevents path traversal attacks.
-        Returns the validated absolute path.
-        """
-        # Convert to absolute paths
         backup_path = Path(backup_file).resolve()
         allowed_path = Path(allowed_base).resolve()
 
-        # Check if backup path is within allowed directory
         try:
             backup_path.relative_to(allowed_path)
         except ValueError:
@@ -400,7 +283,6 @@ class BitwardenClient:
             )
             raise BitwardenError(f"Invalid backup path: must be within {allowed_base}")
 
-        # Validate filename contains only safe characters
         filename = backup_path.name
         if not re.match(r"^[a-zA-Z0-9._-]+$", filename):
             logger.error(
@@ -410,47 +292,41 @@ class BitwardenClient:
                 "Invalid backup filename: only alphanumeric, dots, dashes, and underscores allowed"
             )
 
-        # Validate file extension
         if not filename.endswith(".enc"):
             logger.error(f"Invalid backup filename: {filename} must end with .enc")
             raise BitwardenError("Invalid backup filename: must end with .enc")
 
         return str(backup_path)
 
-    def export_bitwarden_encrypted(
-        self, backup_file: str, file_pw: str, allowed_dir: str = "/app/backups"
-    ):
-        """Exports using Bitwarden's built-in encryption."""
-        # Validate backup path
-        validated_path = self._validate_backup_path(backup_file, allowed_dir)
-
-        logger.info("Exporting with Bitwarden encryption...")
-        self._run(
-            cmd=[
-                "export",
-                "--output",
-                validated_path,
-                "--format",
-                "json",
-                "--password",
-                file_pw,
-            ],
-            capture_json=False,
-        )
-
+    # -------------------------------
+    # Export
+    # -------------------------------
     def export_raw_encrypted(
         self, backup_file: str, file_pw: str, allowed_dir: str = "/app/backups"
     ):
-        """Exports raw data and encrypts it in-memory."""
-        # Validate backup path
+        """Sync vault, export to JSON, then encrypt with Argon2id + AES-GCM."""
         validated_path = self._validate_backup_path(backup_file, allowed_dir)
 
-        logger.info("Exporting raw data from Bitwarden...")
-        # Get raw JSON string (not parsed)
-        raw_json_str = self._run(
-            cmd=["export", "--format", "json", "--raw"], capture_json=False
-        )
-        encrypted_data = self.encrypt_data(raw_json_str.encode("utf-8"), file_pw)
+        logger.info("Syncing vault from server...")
+        self._run(["sync"])
 
+        logger.info("Exporting raw vault JSON from rbw...")
+        raw_json_str = self._run(["export"])
+        if not raw_json_str:
+            raise BitwardenError("rbw export returned no data")
+
+        encrypted_data = self.encrypt_data(raw_json_str.encode("utf-8"), file_pw)
         with open(validated_path, "wb") as f:
             f.write(encrypted_data)
+        logger.info(f"Wrote encrypted backup to {validated_path}")
+
+    def export_bitwarden_encrypted(
+        self, backup_file: str, file_pw: str, allowed_dir: str = "/app/backups"
+    ):
+        """Bitwarden-format encrypted export — not supported on the rbw backend."""
+        raise BitwardenError(
+            "BACKUP_ENCRYPTION_MODE='bitwarden' is no longer supported. "
+            "Switch to 'raw' (Argon2id + AES-256-GCM). "
+            "Existing 'bitwarden'-mode backups remain restorable via the Bitwarden web vault; "
+            "new backups will use the stronger raw mode."
+        )

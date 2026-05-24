@@ -1,15 +1,20 @@
 # syntax=docker/dockerfile:1.24@sha256:87999aa3d42bdc6bea60565083ee17e86d1f3339802f543c0d03998580f9cb89
-# Multi-stage Dockerfile for BackVault - Optimized for size
+# Multi-stage Dockerfile for BackVault — distroless runtime
 # Platform: Linux x86_64 only
+#
+# Runtime image is Chainguard's distroless Python (Wolfi, glibc, no shell, no
+# package manager). The vault client is rbw (Rust) — installed in the builder
+# stage and copied across as a single binary alongside rbw-agent.
 
 # ============================================
-# Builder Stage - Install Python dependencies via uv
+# Builder Stage — has apk, shell, curl, unzip
 # ============================================
-FROM python:3.14-slim@sha256:c845af9399020c7e562969a13689e929074a10fd057acd1b1fad06a2fb068e97 AS builder
+FROM cgr.dev/chainguard/python:latest-dev AS builder
+
+USER root
+WORKDIR /app
 
 COPY --from=ghcr.io/astral-sh/uv:0.11@sha256:440fd6477af86a2f1b38080c539f1672cd22acb1b1a47e321dba5158ab08864d /uv /uvx /usr/local/bin/
-
-WORKDIR /app
 
 ENV UV_PROJECT_ENVIRONMENT=/app/.venv \
     UV_LINK_MODE=copy \
@@ -20,63 +25,37 @@ COPY pyproject.toml uv.lock ./
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --no-dev --no-install-project
 
+# Install rbw (Rust Bitwarden client). Wolfi packages rbw; pin via Renovate
+# once you confirm a stable upstream version.
+# If `apk add rbw` ever fails (package removed/renamed), fallback is:
+#   apk add --no-cache cargo rust && cargo install rbw --root /usr/local
+RUN apk add --no-cache rbw
+
 # ============================================
-# Runtime Stage - Minimal runtime environment
+# Runtime Stage — distroless (no shell, no apk)
 # ============================================
-FROM python:3.14-slim@sha256:c845af9399020c7e562969a13689e929074a10fd057acd1b1fad06a2fb068e97
+FROM cgr.dev/chainguard/python:latest
 
-# Install only runtime dependencies (no -dev packages)
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    bash \
-    ca-certificates \
-    cron \
-    curl \
-    unzip \
-    libffi8 \
-    libssl3 \
-    && rm -rf /var/lib/apt/lists/*
-
-# Create non-root user
-RUN groupadd -g 1000 backvault && \
-    useradd -u 1000 -g backvault -m -d /home/backvault backvault && \
-    mkdir -p /app/backups /var/log && \
-    chown -R backvault:backvault /app /var/log /home/backvault
-
+USER 1000:1000
 WORKDIR /app
 
-# Set HOME for backvault user
-ENV HOME=/home/backvault
+# Python virtual environment
+COPY --from=builder --chown=1000:1000 /app/.venv /app/.venv
 
-# Copy virtual environment from builder
-COPY --from=builder /app/.venv /app/.venv
-ENV PATH="/app/.venv/bin:$PATH"
+# rbw + rbw-agent binaries (root-owned, world-executable)
+COPY --from=builder /usr/bin/rbw /usr/bin/rbw
+COPY --from=builder /usr/bin/rbw-agent /usr/bin/rbw-agent
 
-# Install Bitwarden CLI for Linux x86_64
-RUN set -eux; \
-    BW_VERSION=$(curl -s https://api.github.com/repos/bitwarden/clients/releases | \
-                 grep -o '"tag_name": "cli-v[^"]*"' | head -1 | \
-                 sed 's/.*cli-v\([^"]*\).*/\1/') || BW_VERSION="2024.10.2"; \
-    echo "Installing Bitwarden CLI version: ${BW_VERSION} for Linux x86_64"; \
-    curl -fsSL "https://github.com/bitwarden/clients/releases/download/cli-v${BW_VERSION}/bw-linux-x86_64-${BW_VERSION}.zip" -o /tmp/bw.zip || \
-    curl -fsSL "https://vault.bitwarden.com/download/?app=cli&platform=linux" -o /tmp/bw.zip; \
-    unzip /tmp/bw.zip -d /tmp; \
-    mv /tmp/bw /usr/local/bin/bw; \
-    chmod +x /usr/local/bin/bw; \
-    rm -f /tmp/bw.zip
+# Application code
+COPY --chown=1000:1000 ./src/ /app/
+COPY --chown=1000:1000 ./entrypoint.py /app/entrypoint.py
+COPY --chown=1000:1000 --chmod=0755 ./pinentry.py /app/pinentry.py
 
-# Remove curl and unzip after bw installation to save space
-RUN apt-get purge -y --auto-remove curl unzip && \
-    rm -rf /var/lib/apt/lists/*
+ENV PATH="/app/.venv/bin:$PATH" \
+    HOME=/app \
+    XDG_CONFIG_HOME=/app/.config \
+    XDG_DATA_HOME=/app/.local/share \
+    XDG_RUNTIME_DIR=/tmp/rbw-runtime \
+    RBW_PINENTRY=/app/pinentry.py
 
-# Copy application files
-COPY --chown=backvault:backvault ./src /app/
-COPY --chown=backvault:backvault ./entrypoint.sh /app/entrypoint.sh
-COPY --chown=backvault:backvault ./cleanup.sh /app/cleanup.sh
-
-# Set execute permissions
-RUN chmod +x /app/entrypoint.sh /app/cleanup.sh
-
-# Switch to non-root user
-USER backvault
-
-ENTRYPOINT ["/app/entrypoint.sh"]
+ENTRYPOINT ["python", "/app/entrypoint.py"]
