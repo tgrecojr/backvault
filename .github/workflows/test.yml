@@ -75,5 +75,7 @@ jobs:
           cache-to: type=gha,mode=max
 
       - name: Test image can be started
+        # Runtime is distroless — no shell. Invoke each binary directly.
         run: |
-          docker run --rm --entrypoint /bin/bash backvault:test -c "python --version && bw --version || echo 'Note: bw may need seccomp=unconfined'"
+          docker run --rm --entrypoint /app/.venv/bin/python backvault:test --version
+          docker run --rm --entrypoint /usr/bin/rbw backvault:test --version

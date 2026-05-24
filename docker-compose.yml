@@ -20,19 +20,17 @@ services:
     # Run as current user to avoid permission issues with mounted volumes
     user: "${UID:-1000}:${GID:-1000}"
 
-    # REQUIRED: Bitwarden CLI needs this to run
-    security_opt:
-      - seccomp=unconfined
-
     environment:
       # Required credentials
       BW_CLIENT_ID: "${BW_CLIENT_ID}"
       BW_CLIENT_SECRET: "${BW_CLIENT_SECRET}"
       BW_PASSWORD: "${BW_PASSWORD}"
       BW_SERVER: "${BW_SERVER}"
+      BW_EMAIL: "${BW_EMAIL}"
       BW_FILE_PASSWORD: "${BW_FILE_PASSWORD}"
 
       # Optional configuration
+      # Only 'raw' is supported on the rbw backend (Argon2id + AES-256-GCM).
       BACKUP_ENCRYPTION_MODE: "${BACKUP_ENCRYPTION_MODE:-raw}"
       BACKUP_INTERVAL_HOURS: "${BACKUP_INTERVAL_HOURS:-12}"
       RETAIN_DAYS: "${RETAIN_DAYS:-7}"
