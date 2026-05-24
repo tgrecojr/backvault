@@ -76,6 +76,8 @@ jobs:
 
       - name: Test image can be started
         # Runtime is distroless — no shell. Invoke each binary directly.
+        # `bw --version` needs seccomp=unconfined because the pkg'd Node binary
+        # uses syscalls the default Docker profile blocks.
         run: |
           docker run --rm --entrypoint /app/.venv/bin/python backvault:test --version
-          docker run --rm --entrypoint /usr/bin/rbw backvault:test --version
+          docker run --rm --security-opt seccomp=unconfined --entrypoint /usr/local/bin/bw backvault:test --version

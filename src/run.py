@@ -46,16 +46,11 @@ def validate_backup_dir(backup_dir: str) -> str:
 
 def main():
     # Vault access information
+    client_id = require_env("BW_CLIENT_ID")
+    client_secret = require_env("BW_CLIENT_SECRET")
     master_pw = require_env("BW_PASSWORD")
     server = require_env("BW_SERVER")
-    email = require_env("BW_EMAIL")
     file_pw = require_env("BW_FILE_PASSWORD")
-    # API-key credentials are optional: rbw login uses the master-password
-    # flow against Vaultwarden. BW_CLIENT_ID / BW_CLIENT_SECRET are only
-    # needed if rbw ever asks for them via pinentry (e.g. Bitwarden Cloud's
-    # bot-detection path), and are harmless when set.
-    client_id = os.getenv("BW_CLIENT_ID")
-    client_secret = os.getenv("BW_CLIENT_SECRET")
 
     # Configuration
     backup_dir_raw = os.getenv("BACKUP_DIR", "/app/backups")
@@ -64,17 +59,11 @@ def main():
     # Validate backup directory
     backup_dir = validate_backup_dir(backup_dir_raw)
 
-    # Validate encryption mode. 'bitwarden' is no longer supported on the rbw backend.
-    ALLOWED_MODES = {"raw"}
-    encryption_mode_raw = os.getenv("BACKUP_ENCRYPTION_MODE", "raw")
+    # Validate encryption mode with strict whitelist
+    ALLOWED_MODES = {"raw", "bitwarden"}
+    encryption_mode_raw = os.getenv("BACKUP_ENCRYPTION_MODE", "bitwarden")
     encryption_mode = encryption_mode_raw.lower().strip()
 
-    if encryption_mode == "bitwarden":
-        logger.critical(
-            "BACKUP_ENCRYPTION_MODE='bitwarden' is no longer supported. "
-            "Switch to 'raw' (Argon2id + AES-256-GCM)."
-        )
-        sys.exit(1)
     if encryption_mode not in ALLOWED_MODES:
         logger.critical(
             f"Invalid BACKUP_ENCRYPTION_MODE: '{encryption_mode_raw}'. "
@@ -92,7 +81,6 @@ def main():
     logger.info("Connecting to vault...")
     source = BitwardenClient(
         server=server,
-        email=email,
         client_id=client_id,
         client_secret=client_secret,
         use_api_key=True,
@@ -117,7 +105,11 @@ def main():
         logger.info(f"Starting export with mode: '{encryption_mode}'")
 
         try:
-            source.export_raw_encrypted(backup_file, file_pw, backup_dir)
+            if encryption_mode == "raw":
+                source.export_raw_encrypted(backup_file, file_pw, backup_dir)
+            elif encryption_mode == "bitwarden":
+                source.export_bitwarden_encrypted(backup_file, file_pw, backup_dir)
+
             logger.info("Export completed successfully.")
         except Exception as e:
             logger.error(f"Export failed: {e}")
