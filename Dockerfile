@@ -9,7 +9,7 @@
 # ============================================
 # rbw builder — compile rbw from crates.io
 # ============================================
-FROM cgr.dev/chainguard/rust:latest-dev AS rbw-builder
+FROM cgr.dev/chainguard/rust:latest-dev@sha256:9f165c39de87863b695ec367f76820faa3d93d1f6c7a579131b817bb3d34047b AS rbw-builder
 
 USER root
 WORKDIR /build
@@ -27,7 +27,7 @@ RUN --mount=type=cache,target=/root/.cargo/registry \
 # ============================================
 # Python + uv builder
 # ============================================
-FROM cgr.dev/chainguard/python:latest-dev AS builder
+FROM cgr.dev/chainguard/python:latest-dev@sha256:c1d503ebc5088bd0143673af0d02f2db31e53acc506ba5a8f4756c337a989d3f AS builder
 
 USER root
 WORKDIR /app
@@ -46,7 +46,7 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 # ============================================
 # Runtime Stage — distroless (no shell, no apk)
 # ============================================
-FROM cgr.dev/chainguard/python:latest
+FROM cgr.dev/chainguard/python:latest@sha256:f960fea6d1fb1c0ad626558d9db323ff84468927ac37cd7fa889b512ba0dc1c9
 
 USER 1000:1000
 WORKDIR /app
