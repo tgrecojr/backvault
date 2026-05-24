@@ -46,12 +46,16 @@ def validate_backup_dir(backup_dir: str) -> str:
 
 def main():
     # Vault access information
-    client_id = require_env("BW_CLIENT_ID")
-    client_secret = require_env("BW_CLIENT_SECRET")
     master_pw = require_env("BW_PASSWORD")
     server = require_env("BW_SERVER")
     email = require_env("BW_EMAIL")
     file_pw = require_env("BW_FILE_PASSWORD")
+    # API-key credentials are optional: rbw login uses the master-password
+    # flow against Vaultwarden. BW_CLIENT_ID / BW_CLIENT_SECRET are only
+    # needed if rbw ever asks for them via pinentry (e.g. Bitwarden Cloud's
+    # bot-detection path), and are harmless when set.
+    client_id = os.getenv("BW_CLIENT_ID")
+    client_secret = os.getenv("BW_CLIENT_SECRET")
 
     # Configuration
     backup_dir_raw = os.getenv("BACKUP_DIR", "/app/backups")

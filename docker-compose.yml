@@ -22,12 +22,15 @@ services:
 
     environment:
       # Required credentials
-      BW_CLIENT_ID: "${BW_CLIENT_ID}"
-      BW_CLIENT_SECRET: "${BW_CLIENT_SECRET}"
       BW_PASSWORD: "${BW_PASSWORD}"
       BW_SERVER: "${BW_SERVER}"
       BW_EMAIL: "${BW_EMAIL}"
       BW_FILE_PASSWORD: "${BW_FILE_PASSWORD}"
+      # Optional — only needed if rbw ever asks for them via pinentry
+      # (e.g. Bitwarden Cloud bot-detection). Vaultwarden uses the
+      # master-password flow and ignores these.
+      BW_CLIENT_ID: "${BW_CLIENT_ID:-}"
+      BW_CLIENT_SECRET: "${BW_CLIENT_SECRET:-}"
 
       # Optional configuration
       # Only 'raw' is supported on the rbw backend (Argon2id + AES-256-GCM).
