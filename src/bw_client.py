@@ -128,10 +128,14 @@ class BitwardenClient:
         """Write rbw's config.json from constructor inputs."""
         self.config_dir.mkdir(parents=True, exist_ok=True)
         config_path = self.config_dir / "config.json"
+        # Set identity_url explicitly rather than relying on rbw's auto-derivation
+        # from base_url. For self-hosted Vaultwarden the identity endpoint lives
+        # at `<base_url>/identity`.
+        base = (self.server or "").rstrip("/")
         config = {
             "email": self.email,
             "base_url": self.server,
-            "identity_url": None,
+            "identity_url": f"{base}/identity" if base else None,
             "ui_url": None,
             "notifications_url": None,
             "client_cert_path": None,
@@ -177,6 +181,10 @@ class BitwardenClient:
             logger.error(f"stderr: {e.stderr}")
             logger.error(f"Command: {' '.join(full_cmd)}")
             raise BitwardenError("rbw command failed") from e
+
+        # Surface rbw's stderr even on success so RUST_LOG=debug output is visible.
+        if result.stderr and result.stderr.strip():
+            logger.info(f"rbw stderr: {result.stderr.strip()}")
 
         output = result.stdout.strip()
         if capture_json:
