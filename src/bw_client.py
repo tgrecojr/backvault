@@ -94,7 +94,9 @@ class BitwardenClient:
         :param config_dir: Path where rbw config.json lives
         """
         self.bw_cmd = bw_cmd
-        self.session = session  # Retained for interface parity; rbw manages its own session
+        self.session = (
+            session  # Retained for interface parity; rbw manages its own session
+        )
         self.server = server
         self.email = email
         self.client_id = client_id

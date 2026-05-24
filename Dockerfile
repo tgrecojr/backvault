@@ -3,11 +3,29 @@
 # Platform: Linux x86_64 only
 #
 # Runtime image is Chainguard's distroless Python (Wolfi, glibc, no shell, no
-# package manager). The vault client is rbw (Rust) — installed in the builder
-# stage and copied across as a single binary alongside rbw-agent.
+# package manager). The vault client is rbw (Rust) — Wolfi doesn't package rbw,
+# so we cargo-install it in a dedicated Rust builder stage and copy the binary.
 
 # ============================================
-# Builder Stage — has apk, shell, curl, unzip
+# rbw builder — compile rbw from crates.io
+# ============================================
+FROM cgr.dev/chainguard/rust:latest-dev AS rbw-builder
+
+USER root
+WORKDIR /build
+
+# rbw depends on OpenSSL via reqwest; pkgconf locates the system OpenSSL
+RUN apk add --no-cache openssl-dev pkgconf
+
+# Cache the cargo registry + git index + target dir to keep CI rebuilds fast.
+RUN --mount=type=cache,target=/root/.cargo/registry \
+    --mount=type=cache,target=/root/.cargo/git \
+    --mount=type=cache,target=/build/target \
+    CARGO_TARGET_DIR=/build/target \
+    cargo install rbw --root /usr/local --locked
+
+# ============================================
+# Python + uv builder
 # ============================================
 FROM cgr.dev/chainguard/python:latest-dev AS builder
 
@@ -25,12 +43,6 @@ COPY pyproject.toml uv.lock ./
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --no-dev --no-install-project
 
-# Install rbw (Rust Bitwarden client). Wolfi packages rbw; pin via Renovate
-# once you confirm a stable upstream version.
-# If `apk add rbw` ever fails (package removed/renamed), fallback is:
-#   apk add --no-cache cargo rust && cargo install rbw --root /usr/local
-RUN apk add --no-cache rbw
-
 # ============================================
 # Runtime Stage — distroless (no shell, no apk)
 # ============================================
@@ -42,9 +54,9 @@ WORKDIR /app
 # Python virtual environment
 COPY --from=builder --chown=1000:1000 /app/.venv /app/.venv
 
-# rbw + rbw-agent binaries (root-owned, world-executable)
-COPY --from=builder /usr/bin/rbw /usr/bin/rbw
-COPY --from=builder /usr/bin/rbw-agent /usr/bin/rbw-agent
+# rbw + rbw-agent binaries from the Rust builder
+COPY --from=rbw-builder /usr/local/bin/rbw /usr/bin/rbw
+COPY --from=rbw-builder /usr/local/bin/rbw-agent /usr/bin/rbw-agent
 
 # Application code
 COPY --chown=1000:1000 ./src/ /app/
