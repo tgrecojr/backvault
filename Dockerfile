@@ -20,7 +20,7 @@ FROM cgr.dev/chainguard/python:latest-dev@sha256:bc47957f4f3d0f00514fdcaf3d28965
 USER root
 WORKDIR /app
 
-COPY --from=ghcr.io/astral-sh/uv:0.11@sha256:03bdc89bb9798628846e60c3a9ad19006c8c3c724ccd2985a33145c039a0577b /uv /uvx /usr/local/bin/
+COPY --from=ghcr.io/astral-sh/uv:0.11@sha256:78bc42400d77b0678ba95765305c826652ed5431f399257271dda681d0318f03 /uv /uvx /usr/local/bin/
 
 ENV UV_PROJECT_ENVIRONMENT=/app/.venv \
     UV_LINK_MODE=copy \
