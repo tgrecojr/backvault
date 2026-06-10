@@ -48,7 +48,7 @@ RUN set -eux; \
 # ============================================
 # Runtime Stage — distroless (no shell, no apk)
 # ============================================
-FROM cgr.dev/chainguard/python:latest@sha256:15c25640085de8df6ea342f0f4a0064b85ebb5c6e1fcc306c59f78724c070c9a
+FROM cgr.dev/chainguard/python:latest@sha256:6202a683b28cf0eee2f3f040e2a1e07705a39e1d37f10a06530dd36277f0670d
 
 USER 1000:1000
 WORKDIR /app
