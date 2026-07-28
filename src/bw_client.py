@@ -1,15 +1,17 @@
-import os
-import subprocess
 import json
 import logging
+import os
 import re
+import subprocess
 import time
-from typing import Any, Callable
-from sys import stdout
-from pathlib import Path
+from collections.abc import Callable
 from functools import wraps
-from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+from pathlib import Path
+from sys import stdout
+from typing import Any
+
 from argon2.low_level import Type, hash_secret_raw
+from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
 # Constants for encryption
 SALT_SIZE = 16
@@ -36,8 +38,6 @@ logger = logging.getLogger(__name__)
 
 class BitwardenError(Exception):
     """Base exception for Bitwarden wrapper."""
-
-    pass
 
 
 def retry_with_backoff(
@@ -206,10 +206,9 @@ class BitwardenClient:
             if skip_next:
                 redacted.append("***REDACTED***")
                 skip_next = False
-            elif arg in sensitive_flags:
-                redacted.append(arg)
-                skip_next = True
-            elif arg in sensitive_commands and i + 1 < len(cmd):
+            elif arg in sensitive_flags or (
+                arg in sensitive_commands and i + 1 < len(cmd)
+            ):
                 redacted.append(arg)
                 skip_next = True
             else:
