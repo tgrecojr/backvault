@@ -20,6 +20,20 @@ dev = [
 [tool.uv]
 package = false
 
+[tool.ruff.lint]
+# Rides ruff's default rule selection, which widened in 0.16. Note that the
+# defaults are not stable across ruff releases -- a future bump can introduce
+# new rules and turn every open Renovate PR red at once. If that churn becomes
+# a problem, replace this with an explicit `select`.
+ignore = [
+    # Broad `except Exception` is intentional here: these are the top-level
+    # error boundaries of a long-running backup daemon, plus best-effort
+    # logout cleanup in `finally`. Letting an unexpected exception escape
+    # would abort the backup or skip the vault logout.
+    "BLE001",
+    "S110",
+]
+
 [tool.pytest.ini_options]
 minversion = "7.0"
 testpaths = ["tests"]
