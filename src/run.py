@@ -1,10 +1,11 @@
+import logging
 import os
 import sys
-import logging
-from pathlib import Path
-from bw_client import BitwardenClient
 from datetime import datetime
+from pathlib import Path
 from sys import stdout
+
+from bw_client import BitwardenClient
 
 logging.basicConfig(
     level=logging.INFO,
@@ -98,8 +99,10 @@ def main():
             logger.error(f"Unlock failed: {e}")
             sys.exit(1)
 
-        # Generate timestamped filename
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        # Generate timestamped filename. `.astimezone()` attaches the local
+        # zone without shifting the clock, so filenames stay local-time as
+        # before -- it only makes the previously implicit tz explicit.
+        timestamp = datetime.now().astimezone().strftime("%Y%m%d_%H%M%S")
         backup_file = os.path.join(backup_dir, f"backup_{timestamp}.enc")
 
         logger.info(f"Starting export with mode: '{encryption_mode}'")
