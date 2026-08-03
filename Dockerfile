@@ -15,7 +15,7 @@
 # ============================================
 # Builder Stage — has apk, shell, curl, unzip
 # ============================================
-FROM cgr.dev/chainguard/python:latest-dev@sha256:1937c8994699b16ee74e11cb1d88e744270b51fa4b06aa4f83dae78d15067cbe AS builder
+FROM cgr.dev/chainguard/python:latest-dev@sha256:a024538d3fc47b6c7bdd9d8afe539e2e3a6811dad14bee4d32293be5f29e6734 AS builder
 
 USER root
 WORKDIR /app
