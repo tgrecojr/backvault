@@ -50,6 +50,12 @@
       "description": "Python (pep621/uv) deps follow the all-minor-patch group; called out for visibility",
       "matchManagers": ["pep621"],
       "matchUpdateTypes": ["minor", "patch"]
+    },
+    {
+      "description": "Keep the Chainguard builder (python:latest-dev) and runtime (python:latest) in lockstep — one PR, never desynced, so the venv copied from the builder always matches the runtime Python.",
+      "matchDepNames": ["cgr.dev/chainguard/python"],
+      "groupName": "chainguard python base images",
+      "groupSlug": "chainguard-python-base"
     }
   ],
   "vulnerabilityAlerts": {
