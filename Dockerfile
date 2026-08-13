@@ -15,7 +15,7 @@
 # ============================================
 # Builder Stage — has apk, shell, curl, unzip
 # ============================================
-FROM cgr.dev/chainguard/python:latest-dev@sha256:de29e9059428580a3f6608431db3ea6e7e638075796dbff2541d156e1d7f344c AS builder
+FROM cgr.dev/chainguard/python:latest-dev@sha256:78b681a40e3ebb5049773123e7e7d277b2578712e23b32df5cb5213b4123509d AS builder
 
 USER root
 WORKDIR /app
@@ -48,7 +48,7 @@ RUN set -eux; \
 # ============================================
 # Runtime Stage — distroless (no shell, no apk)
 # ============================================
-FROM cgr.dev/chainguard/python:latest@sha256:b9d4f6018fddd3261e8552679e7827f495585873869554823796df6e59aefc1d
+FROM cgr.dev/chainguard/python:latest@sha256:8fab86fb761aeb18723f4f1b1baa330bd59d64e92abdc5b980d1bbd9399c297d
 
 USER 1000:1000
 WORKDIR /app
