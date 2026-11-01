@@ -23,8 +23,8 @@ arrows:
     blocks: [backup-cycle, image-delivery]
     blockedBy: []
     detail: vault-access.md
-    next: "Run the pre-merge drill: diff native export against `bw export --format json` of the same vault, import into a scratch Vaultwarden, pin REFERENCE_CLI_VERSION and resolve VAULT-EXPORT-012."
-    drift: "Native client implemented and unit-tested; restore not yet verified against a real vault."
+    next: "Restore drill on a real backup (decrypt, import into scratch Vaultwarden, compare counts); pin REFERENCE_CLI_VERSION and resolve VAULT-EXPORT-012."
+    drift: "Merged 2026-11-01 with the restore drill waived by the maintainer; import compatibility of new backups is unverified until the drill runs."
 
   backup-encryption:
     status: MAPPED

@@ -4,7 +4,7 @@ Turns Bitwarden/Vaultwarden credentials into a plaintext vault export in memory,
 
 ## Status
 
-**MAPPED** — specs, tests, and code rewritten 2026-11-01 for the native Python client (replacing the `bw` CLI wrapper); not yet audited. 49 of 50 specs implemented and unit-tested. The pre-merge drill (semantic diff against `bw export --format json` of the same vault, then an import into a scratch Vaultwarden) has **not** been run yet; until it is, this segment should not be considered restore-verified.
+**MAPPED** — specs, tests, and code rewritten 2026-11-01 for the native Python client (replacing the `bw` CLI wrapper); not yet audited. 49 of 50 specs implemented and unit-tested. **Restore is unverified:** the maintainer merged without running the restore drill (semantic diff against `bw export --format json`, then an import into a scratch Vaultwarden), accepting the import-compatibility risk for backups taken from this version on. Historical backups are unaffected (file format unchanged). Any session that touches this segment should offer to run the drill on a real backup first.
 
 ## References
 
@@ -61,9 +61,10 @@ Turns Bitwarden/Vaultwarden credentials into a plaintext vault export in memory,
 ## Work Required
 
 ### Must Fix
-1. Run the pre-merge drill against the maintainer's Vaultwarden: compare the native export with `bw export --format json --raw` of the same vault (parsed, sorted, `null`/`[]`/absent distinct), resolve VAULT-EXPORT-012 by pinning the empty-collection shape to the CLI release used, and import the native export into a scratch Vaultwarden. Record the CLI version in `REFERENCE_CLI_VERSION`.
+*(none — the restore drill was consciously waived at merge; it is the top Should Fix)*
 
 ### Should Fix
+1. Run the restore drill on a real backup: decrypt it with `decrypt.py`, import into a scratch Vaultwarden, compare item and folder counts; optionally diff against `bw export --format json --raw` of the same vault (parsed, sorted, `null`/`[]`/absent distinct), resolve VAULT-EXPORT-012, and pin `REFERENCE_CLI_VERSION` to the CLI release used.
 2. Add the comparison script used by the drill to the repository so it is repeatable (LLD Deferred 7).
 3. Exercise a Bitwarden Cloud account once to confirm the token response shape (LLD Deferred 1).
 
