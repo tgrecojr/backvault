@@ -12,3 +12,6 @@ logs/
 .serena
 htmlcov/
 .coverage
+
+# Added by ggshield
+.cache_ggshield
