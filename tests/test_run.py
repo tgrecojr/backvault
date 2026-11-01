@@ -19,9 +19,9 @@ from vault_client import BitwardenError
 
 # Fixture credentials: deliberately fake, assembled so secret scanners do not
 # mistake them for real assignments.
-FAKE_CLIENT_SECRET = "-".join(["fixture", "client", "value"])
-FAKE_MASTER_PW = "-".join(["fixture", "master", "value"])
-FAKE_FILE_PW = "-".join(["fixture", "file", "value"])
+FAKE_CLIENT_SECRET = "fixture-client-value"
+FAKE_MASTER_PW = "fixture-master-value"
+FAKE_FILE_PW = "fixture-file-value"
 REQUIRED = {
     "BW_CLIENT_ID": "user.0b3c6e2a-9d44-4c4e-8d4e-1a2b3c4d5e6f",
     "BW_CLIENT_SECRET": FAKE_CLIENT_SECRET,
