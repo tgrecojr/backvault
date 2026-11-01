@@ -1,7 +1,7 @@
 # 🗄️ BackVault
 
 **BackVault** is a lightweight Dockerized service that periodically backs up your **Bitwarden** or **Vaultwarden** vaults into password-protected encrypted files.  
-It’s designed for hands-free, secure, and automated backups using the official Bitwarden CLI.
+It’s designed for hands-free, secure, and automated backups. BackVault talks to the Bitwarden API directly and decrypts your vault in memory, so the image contains nothing but Python.
 
 ---
 
@@ -11,8 +11,8 @@ It’s designed for hands-free, secure, and automated backups using the official
 - 🕐 **Interval-based backup scheduling** — configure backup frequency in hours
 - 💾 Password-protected backup files using AES encryption
 - 🧹 **Automated Cleanup**: Automatically deletes old backups daily at midnight based on configurable retention period
-- ✨ **Two Encryption Modes**: Choose between Bitwarden's native encrypted format or a portable, standard AES-256-GCM encrypted format
-- 🔐 **Security Hardened**: Non-root execution, log redaction, retry logic with exponential backoff
+- ✨ **Portable Encryption**: Standard AES-256-GCM with Argon2id, restorable with a small Python script and no Bitwarden tooling
+- 🔐 **Security Hardened**: Distroless image with no third-party binaries, non-root execution, default Docker seccomp profile, no secrets on the command line, retry logic with exponential backoff
 - 🌐 Works with both Bitwarden Cloud and self-hosted Bitwarden/Vaultwarden
 - 🐧 **Linux x86_64 Support**: Optimized for standard Linux servers
 - 🐳 Runs fully containerized — no setup or local dependencies required
@@ -35,17 +35,12 @@ docker run -d \
   -e BW_PASSWORD="your_master_password" \
   -e BW_SERVER="https://vault.yourdomain.com" \
   -e BW_FILE_PASSWORD="backup_encryption_password" \
-  -e BACKUP_ENCRYPTION_MODE="raw" \
   -e BACKUP_INTERVAL_HOURS=12 \
   -v /path/to/backup:/app/backups \
-  --security-opt seccomp=unconfined \
   ghcr.io/tgrecojr/backvault:latest
 ```
 
-> ⚠️ **Security Requirement**: The `--security-opt seccomp=unconfined` flag is **required** for the Bitwarden CLI to function properly inside the container.
-
-> 🔑 **Important**: The container uses the official Bitwarden CLI internally.
-> Your credentials are only used to generate the export — they are **never stored** persistently and **never sent** anywhere else.
+> 🔑 **Important**: Your credentials are used only to authenticate to your own server and to decrypt the vault inside the container. They are **never stored** persistently and **never sent** anywhere else. The master password never leaves the process.
 
 ---
 
@@ -63,25 +58,21 @@ services:
     # Run as current user to avoid permission issues with mounted volumes
     user: "${UID:-1000}:${GID:-1000}"
 
-    # REQUIRED: Bitwarden CLI needs this to run
-    security_opt:
-      - seccomp=unconfined
-
     environment:
       BW_CLIENT_ID: "your_client_id"
       BW_CLIENT_SECRET: "your_client_secret"
       BW_PASSWORD: "your_master_password"
       BW_SERVER: "https://vault.yourdomain.com"
       BW_FILE_PASSWORD: "backup_encryption_password"
-      BACKUP_ENCRYPTION_MODE: "raw" # Use 'bitwarden' for the default format
       BACKUP_INTERVAL_HOURS: 12
       RETAIN_DAYS: 7
 
-      # Uncomment if using self-signed certificates
-      # NODE_TLS_REJECT_UNAUTHORIZED: 0
+      # Self-signed server: mount your CA bundle and point at it
+      # BW_CA_CERT: /app/ca.pem
 
     volumes:
       - ./backups:/app/backups
+      # - ./ca.pem:/app/ca.pem:ro
 ```
 
 Then run:
@@ -92,11 +83,11 @@ docker compose up -d
 
 BackVault will automatically:
 
-1. Log in to your Bitwarden/Vaultwarden instance
-2. Export your vault
+1. Authenticate to your Bitwarden/Vaultwarden instance with your API key
+2. Decrypt your vault in memory with your master password and build a Bitwarden-format JSON export
 3. Encrypt it using `BW_FILE_PASSWORD`
 4. Store the backup in `/app/backups` (mounted to your host directory)
-5. Logout after every backup
+5. Discard every key and token when the cycle ends
 
 ---
 
@@ -110,10 +101,9 @@ BackVault will automatically:
 | `BW_SERVER`                    | Bitwarden or Vaultwarden server URL            | ✅        | -       | `https://vault.example.com` |
 | `BW_FILE_PASSWORD`             | Password to encrypt exported backup file       | ✅        | -       | `strong_backup_password`    |
 | `BACKUP_INTERVAL_HOURS`        | Backup frequency in hours                      | ❌        | `12`    | `12`                        |
-| `BACKUP_ENCRYPTION_MODE`       | `bitwarden` or `raw` (portable AES-256-GCM)    | ❌        | `bitwarden` | `raw`                   |
 | `BACKUP_DIR`                   | Directory path for storing backups             | ❌        | `/app/backups` | `/app/backups`         |
 | `RETAIN_DAYS`                  | Days to keep backups. Set to `0` to disable cleanup | ❌  | `7`     | `7`                         |
-| `NODE_TLS_REJECT_UNAUTHORIZED` | Set to `0` **only** if using self-signed certificates | ❌ | `1` | `0`                         |
+| `BW_CA_CERT`                   | Path to a PEM CA bundle to trust for a self-signed server (mount it into the container) | ❌ | - | `/app/ca.pem` |
 
 ---
 
@@ -121,13 +111,12 @@ BackVault will automatically:
 
 ### Master Password Storage
 
-**Important**: BackVault requires your Bitwarden master password (`BW_PASSWORD`) to unlock and export your vault. This is a fundamental requirement of the Bitwarden CLI and cannot be avoided.
+**Important**: BackVault requires your Bitwarden master password (`BW_PASSWORD`) because the vault is encrypted with a key derived from it. The password is used inside the container to derive that key; it is never sent to the server.
 
 **Current Implementation:**
-- Password is passed via environment variable
-- Never logged or stored persistently
-- Redacted from all log output
-- Vault is locked immediately after each backup
+- Password is passed via environment variable and read once per backup cycle
+- Never logged, never placed on a command line, never stored persistently
+- Every derived key and the access token are discarded when the cycle ends
 
 **⚠️ Security Risks:**
 - Environment variables are visible in `docker inspect <container>`
@@ -145,43 +134,17 @@ BackVault will automatically:
 
 ### Additional Security Features
 
-- **Non-root execution**: Container runs as UID 1000 by default (configurable via `user:` in docker-compose)
-- **Automated logout**: Session is terminated immediately after each backup
-- **Retry logic**: Implements exponential backoff to prevent account lockouts
-- **Strong encryption**: AES-256-GCM with PBKDF2 (600,000 iterations) for raw mode backups
-- **Security audited**: See [SECURITYASSESS.md](SECURITYASSESS.md) for detailed security assessment
+- **Non-root, distroless, binary-free**: Chainguard distroless Python runtime as UID 1000, no shell, no third-party executables, default Docker seccomp profile
+- **Pinned supply chain**: base images pinned by digest, Python packages by lock file, images signed with cosign and shipped with SBOM and provenance attestations
+- **Short-lived secrets**: keys and tokens exist only for one backup cycle
+- **Retry logic**: exponential backoff on transient network and server errors; no retry on rejected credentials
+- **Strong encryption**: AES-256-GCM with an Argon2id-derived key for every backup file
 
 ---
 
 ## 🔐 Decrypting Backups
 
-BackVault supports two encryption modes, set by the `BACKUP_ENCRYPTION_MODE` environment variable. The decryption method depends on which mode was used to create the backup.
-
-### Mode 1: `bitwarden` (Default)
-
-This mode uses Bitwarden's native encrypted JSON format. It's secure but proprietary, meaning you **must use the Bitwarden CLI** to decrypt it.
-
-**How to Decrypt:**
-
-1.  Install the official **Bitwarden CLI**: bitwarden.com/help/cli/
-2.  Config the CLI to point to your server with `bw config server`.
-3.  Log in using `bw login`.
-4.  Run the `import` command. This will decrypt the file and import it into your vault.
-
-    ```bash
-    # This command decrypts the file and imports it into a vault.
-    bw import bitwardenjson /path/to/backup.enc
-    ```
-
-    You will be prompted to enter your encryption password before the import can complete.
-
-> This method can be used to restore your vault into the same or a different Bitwarden account. The encryption is self-contained.
-
-### Mode 2: `raw` (Recommended for Portability)
-
-This mode exports the vault as raw JSON and then encrypts it in-memory using a standard, portable format: **AES-256-GCM** with a key derived using **Argon2id**.
-
-The main advantage is that you **do not need the Bitwarden CLI** to decrypt your data, making it ideal for disaster recovery. You can use standard tools like Python or OpenSSL.
+Backups are plain files encrypted with a standard, portable scheme: **AES-256-GCM** with a key derived from `BW_FILE_PASSWORD` using **Argon2id**. You **do not need the Bitwarden CLI** or network access to decrypt one, which is what makes them useful for disaster recovery. The decrypted content is Bitwarden's standard JSON export, which you restore through the web vault's **Settings → Import data → Bitwarden (json)**.
 
 **File Structure:**
 The resulting `.enc` file contains: `[4-byte version][16-byte salt][12-byte nonce][encrypted data + 16-byte auth tag]`
@@ -319,9 +282,9 @@ BackVault uses GitHub Actions for automated building and publishing:
 
 ### Automated Workflows
 
-- **Docker Publish**: Builds and publishes Linux x86_64 images on merge to main
-- **Security Scan**: Weekly vulnerability scanning with Trivy and Bandit
-- **Test**: Runs linting and build tests on all PRs
+- **Docker Publish**: Scans dependencies (Socket, OSV, pip-audit), then builds, signs (cosign), and publishes Linux x86_64 images with SBOM and provenance attestations on merge to main
+- **Test**: Runs linting, unit tests, and a Docker build smoke test on all PRs
+- **GHCR retention**: Prunes old image versions weekly
 
 ### Platform Support
 

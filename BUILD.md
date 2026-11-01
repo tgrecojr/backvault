@@ -4,7 +4,7 @@ This guide explains how to build BackVault Docker images for Linux x86_64.
 
 ## Platform Support
 
-BackVault is designed for **Linux x86_64 (amd64) only**. This simplifies deployment and ensures compatibility with most server environments.
+BackVault is built for **Linux x86_64 (amd64)**. The image has no platform-specific binaries, so other architectures are a CI change rather than a packaging problem, but only amd64 is published today.
 
 ## Quick Commands
 
@@ -24,38 +24,29 @@ docker build --platform linux/amd64 -t backvault:latest .
 ### Using Docker Compose
 
 ```bash
-docker-compose build
+docker compose build
 ```
 
 ---
 
 ## Verifying Your Build
 
-### Check the Built Image
-
-During build, you'll see:
-```
-Installing Bitwarden CLI version: 2024.10.2 for Linux x86_64
-```
-
-### Test the Built Image
+The runtime image is distroless: there is no shell, so verification runs the Python interpreter directly.
 
 ```bash
-# Check the binary architecture
-docker run --rm --entrypoint /bin/bash backvault:latest -c "file /usr/local/bin/bw"
+# Interpreter present
+docker run --rm --entrypoint /app/.venv/bin/python backvault:latest --version
 
-# Should show: "ELF 64-bit LSB executable, x86-64"
+# Application modules import
+docker run --rm --entrypoint /app/.venv/bin/python backvault:latest \
+  -c "import vault_client, backup_crypto, run; print('ok')"
+
+# Image architecture
+docker image inspect backvault:latest | grep Architecture
+# Should show: "amd64"
 ```
 
-### Run a Quick Test
-
-```bash
-docker run --rm \
-  --security-opt seccomp=unconfined \
-  --entrypoint /usr/local/bin/bw \
-  backvault:latest \
-  --version
-```
+No `--security-opt` is needed; the container runs under Docker's default seccomp profile.
 
 ---
 
@@ -63,12 +54,7 @@ docker run --rm \
 
 ### Issue: "exec format error" on macOS ARM (M1/M2/M3)
 
-**Symptom:**
-```
-exec user process caused: exec format error
-```
-
-**Cause:** You're running an x86_64 image on ARM architecture without emulation
+**Cause:** You're running an x86_64 image on ARM architecture without emulation.
 
 **Solution:** Use the `--platform` flag:
 ```bash
@@ -80,18 +66,13 @@ Or in docker-compose.yml:
 services:
   backvault:
     platform: linux/amd64
-    # ...
 ```
 
-### Issue: Binary fails at runtime with SIGTRAP
+### Issue: TLS verification fails against a self-signed server
 
-**Cause:** Docker's seccomp security profile
+**Cause:** The server's certificate is not signed by a CA in the image's trust store.
 
-**Solution:** Add to docker-compose.yml:
-```yaml
-security_opt:
-  - seccomp=unconfined
-```
+**Solution:** Mount your CA bundle into the container and set `BW_CA_CERT` to its path. There is no option to disable verification.
 
 ---
 
@@ -100,29 +81,22 @@ security_opt:
 ### Local Development
 
 ```bash
-# Build the image
 docker build -t backvault:dev .
-
-# Test it
-docker-compose up
+docker compose up
 ```
 
 ### Production Deployment
 
 **Option 1: Use Pre-Built Images (Recommended)**
 ```yaml
-# docker-compose.yml
 services:
   backvault:
-    image: ghcr.io/yourusername/backvault:latest
-    # ...
+    image: ghcr.io/tgrecojr/backvault:latest
 ```
 
 **Option 2: Build on Target Server**
 ```bash
-# Build directly on the server
-ssh user@server
-git clone https://github.com/yourusername/backvault.git
+git clone https://github.com/tgrecojr/backvault.git
 cd backvault
 docker build -t backvault:latest .
 ```
@@ -131,12 +105,7 @@ docker build -t backvault:latest .
 
 ## GitHub Actions Builds
 
-The repository includes GitHub Actions that automatically build Docker images for Linux x86_64:
-
-**To use:**
-1. Push to main branch
-2. Wait for build (~5-10 minutes)
-3. Pull and use: `docker pull ghcr.io/yourusername/backvault:latest`
+On every push to `main`, GitHub Actions scans the locked dependencies, builds the Linux x86_64 image, signs it with cosign, and publishes it with SBOM and provenance attestations to `ghcr.io/tgrecojr/backvault`.
 
 ---
 
@@ -148,25 +117,11 @@ The repository includes GitHub Actions that automatically build Docker images fo
 docker build --no-cache -t backvault:latest .
 ```
 
-### Check Image Architecture
-
-```bash
-docker image inspect backvault:latest | grep Architecture
-# Should show: "amd64"
-```
-
 ---
 
 ## Summary
 
-- **Platform**: Linux x86_64 (amd64) only
+- **Platform**: Linux x86_64 (amd64)
 - **Building on Linux**: `docker build -t backvault:latest .`
 - **Building on macOS**: `docker build --platform linux/amd64 -t backvault:latest .`
 - **Production**: Use pre-built images from GitHub Container Registry
-
----
-
-**Need Help?**
-- Check the build logs for "Installing Bitwarden CLI version" message
-- Verify the binary architecture is x86_64
-- Use GitHub Actions for production builds (recommended)

@@ -75,9 +75,8 @@ jobs:
           cache-to: type=gha,mode=max
 
       - name: Test image can be started
-        # Runtime is distroless — no shell. Invoke each binary directly.
-        # `bw --version` needs seccomp=unconfined because the pkg'd Node binary
-        # uses syscalls the default Docker profile blocks.
+        # Runtime is distroless — no shell. Runs under Docker's default seccomp
+        # profile; the image must not need any relaxation.
         run: |
           docker run --rm --entrypoint /app/.venv/bin/python backvault:test --version
-          docker run --rm --security-opt seccomp=unconfined --entrypoint /usr/local/bin/bw backvault:test --version
+          docker run --rm --entrypoint /app/.venv/bin/python backvault:test -c "import vault_client, backup_crypto, run; print('modules import ok')"
