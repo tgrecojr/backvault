@@ -24,8 +24,8 @@ arrows:
     blocks: [backup-cycle, delivery]
     blockedBy: []
     detail: vault-access.md
-    next: "Run the pre-merge drill against a real vault, pin REFERENCE_CLI_VERSION and resolve VAULT-EXPORT-012."
-    drift: "Implemented and unit-tested; restore not yet verified against a real vault."
+    next: "Restore drill on a real backup (decrypt with backvault-decrypt, import into scratch Vaultwarden, compare counts); pin REFERENCE_CLI_VERSION and resolve VAULT-EXPORT-012."
+    drift: "Restore drill waived by the maintainer at the 2026-11-01 merge of the native client; import compatibility of the Rust export is unverified until the drill runs."
 
   backup-encryption:
     status: MAPPED
