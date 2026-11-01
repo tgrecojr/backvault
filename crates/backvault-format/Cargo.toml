@@ -1,0 +1,17 @@
+[package]
+name = "backvault-format"
+description = "The BackVault .enc backup file format: Argon2id + AES-256-GCM, versioned, no IO"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+publish = false
+
+[dependencies]
+aes-gcm = "0.11"
+argon2 = "0.6"
+getrandom = "0.4"
+pbkdf2 = "0.13"
+sha2 = "0.11"
+zeroize.workspace = true

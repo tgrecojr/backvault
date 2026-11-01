@@ -1,0 +1,21 @@
+[package]
+name = "backvault-decrypt"
+description = "Standalone restore tool: decrypts a BackVault .enc backup on the operator's machine"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+publish = false
+
+[[bin]]
+name = "backvault-decrypt"
+path = "src/main.rs"
+
+[dependencies]
+backvault-format = { path = "../backvault-format" }
+rpassword = "7"
+zeroize.workspace = true
+
+[dev-dependencies]
+tempfile = "3"

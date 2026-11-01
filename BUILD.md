@@ -1,127 +1,70 @@
-# Building BackVault Docker Images
+# Building BackVault
 
-This guide explains how to build BackVault Docker images for Linux x86_64.
+Two artifacts come out of this repository: the service container image, and the `backvault-decrypt` restore tool.
 
-## Platform Support
+## The service image
 
-BackVault is built for **Linux x86_64 (amd64)**. The image has no platform-specific binaries, so other architectures are a CI change rather than a packaging problem, but only amd64 is published today.
-
-## Quick Commands
-
-### Building on Linux
+The image is built for **Linux x86_64 (amd64)** only. It contains one statically linked executable in a distroless static base: no shell, no package manager, no interpreter.
 
 ```bash
-docker build -t backvault:latest .
+# Linux
+docker build -t backvault:local .
+
+# macOS (Apple Silicon or Intel): the image is amd64, so name the platform
+docker build --platform linux/amd64 -t backvault:local .
 ```
 
-### Building on macOS
+On Apple Silicon the build runs under emulation and takes several minutes the first time; later builds reuse the cargo cache mounts.
+
+### Verifying the image
+
+There is no shell inside, so the only thing to run is the binary itself:
 
 ```bash
-# Specify linux/amd64 platform
-docker build --platform linux/amd64 -t backvault:latest .
+docker run --rm backvault:local --version
+# backvault 1.0.0
+
+docker image inspect backvault:local | grep Architecture
+# "amd64"
 ```
 
-### Using Docker Compose
+`--version` can only succeed if the binary is truly static and runs under Docker's default seccomp profile; CI runs the same command as its smoke test. No `--security-opt` is ever needed.
+
+### What the build downloads
+
+Nothing beyond the two digest-pinned base images and the crates pinned in `Cargo.lock`. The Rust-on-Alpine builder already ships gcc and musl-dev, and `.dockerignore` keeps `rust-toolchain.toml` out of the build so rustup never fetches a toolchain.
+
+## The restore tool
 
 ```bash
-docker compose build
+cargo build --release -p backvault-decrypt
+# target/release/backvault-decrypt
 ```
 
----
+That is the whole build. With `rustup` installed, `rust-toolchain.toml` selects the pinned toolchain automatically. The result is a self-contained executable for the machine you built it on; for a static Linux binary add `--target x86_64-unknown-linux-musl` (with `musl-tools` installed) or download the release asset instead.
 
-## Verifying Your Build
+Releases are built by `.github/workflows/release.yml` on every `v*` tag for macOS (arm64, x86_64) and Linux (x86_64, arm64), tested on each target, signed with cosign, and attested with build provenance. See the release notes for verification commands.
 
-The runtime image is distroless: there is no shell, so verification runs the Python interpreter directly.
+## Common issues
+
+**"exec format error" on an Apple Silicon Mac** when running the image: it is amd64. Add `--platform linux/amd64` to `docker run`, or `platform: linux/amd64` under the service in `docker-compose.yml`.
+
+**TLS verification fails against a self-signed server**: mount your CA bundle into the container and set `BW_CA_CERT` to its path. The roots compiled into the binary are Mozilla's; the bundle is trusted in addition to them. There is no option to disable verification.
+
+**Force a rebuild without cache**:
 
 ```bash
-# Interpreter present
-docker run --rm --entrypoint /app/.venv/bin/python backvault:latest --version
-
-# Application modules import
-docker run --rm --entrypoint /app/.venv/bin/python backvault:latest \
-  -c "import vault_client, backup_crypto, run; print('ok')"
-
-# Image architecture
-docker image inspect backvault:latest | grep Architecture
-# Should show: "amd64"
+docker build --no-cache --platform linux/amd64 -t backvault:local .
 ```
 
-No `--security-opt` is needed; the container runs under Docker's default seccomp profile.
+## Production
 
----
+Use the published image:
 
-## Common Issues
-
-### Issue: "exec format error" on macOS ARM (M1/M2/M3)
-
-**Cause:** You're running an x86_64 image on ARM architecture without emulation.
-
-**Solution:** Use the `--platform` flag:
-```bash
-docker run --platform linux/amd64 --rm backvault:latest
-```
-
-Or in docker-compose.yml:
-```yaml
-services:
-  backvault:
-    platform: linux/amd64
-```
-
-### Issue: TLS verification fails against a self-signed server
-
-**Cause:** The server's certificate is not signed by a CA in the image's trust store.
-
-**Solution:** Mount your CA bundle into the container and set `BW_CA_CERT` to its path. There is no option to disable verification.
-
----
-
-## Best Practices
-
-### Local Development
-
-```bash
-docker build -t backvault:dev .
-docker compose up
-```
-
-### Production Deployment
-
-**Option 1: Use Pre-Built Images (Recommended)**
 ```yaml
 services:
   backvault:
     image: ghcr.io/tgrecojr/backvault:latest
 ```
 
-**Option 2: Build on Target Server**
-```bash
-git clone https://github.com/tgrecojr/backvault.git
-cd backvault
-docker build -t backvault:latest .
-```
-
----
-
-## GitHub Actions Builds
-
-On every push to `main`, GitHub Actions scans the locked dependencies, builds the Linux x86_64 image, signs it with cosign, and publishes it with SBOM and provenance attestations to `ghcr.io/tgrecojr/backvault`.
-
----
-
-## Troubleshooting
-
-### Force Rebuild Without Cache
-
-```bash
-docker build --no-cache -t backvault:latest .
-```
-
----
-
-## Summary
-
-- **Platform**: Linux x86_64 (amd64)
-- **Building on Linux**: `docker build -t backvault:latest .`
-- **Building on macOS**: `docker build --platform linux/amd64 -t backvault:latest .`
-- **Production**: Use pre-built images from GitHub Container Registry
+Every push to `main` scans the lock file (OSV, cargo-deny, Socket), builds the amd64 image, signs it with cosign, and publishes it with an SPDX SBOM and build-provenance attestation to `ghcr.io/tgrecojr/backvault`.

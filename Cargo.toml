@@ -1,0 +1,19 @@
+[workspace]
+resolver = "3"
+members = ["crates/backvault-format", "crates/backvault-decrypt", "crates/backvault"]
+
+[workspace.package]
+version = "1.0.0"
+edition = "2024"
+license = "AGPL-3.0-only"
+repository = "https://github.com/tgrecojr/backvault"
+rust-version = "1.94"
+
+[workspace.dependencies]
+zeroize = "1.9"
+
+[profile.release]
+strip = true
+lto = true
+codegen-units = 1
+panic = "unwind"

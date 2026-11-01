@@ -1,48 +1,41 @@
 # syntax=docker/dockerfile:1.28@sha256:bb22d9815c728170f72750f4e5b0d672e06176142e1d602c7e66c050100b7e5b
-# Multi-stage Dockerfile for BackVault — distroless runtime
-# Platform: Linux x86_64 only
+# Multi-stage Dockerfile for BackVault — one static binary in a distroless static image.
+# Platform: linux/amd64 only.
 #
-# Runtime image is Chainguard's distroless Python (Wolfi, glibc, no shell, no
-# package manager). The vault is reached by a native Python client, so the
-# runtime contains nothing beyond the interpreter, the locked virtual
-# environment, and the application modules. Every input is pinned: base and
-# tool images by digest, Python packages by uv.lock. Nothing else is fetched.
+# The builder is the official Rust image on Alpine, whose toolchain targets musl natively and
+# which ships gcc and musl-dev, so the one C-backed crate in the tree (ring, via rustls) builds
+# without a package manager. `--locked` honours Cargo.lock exactly; crates.io is the only
+# network access and only for those pinned versions. rust-toolchain.toml is excluded by
+# .dockerignore so rustup never downloads a toolchain here (IMAGE-BUILD-008).
+#
+# The runtime is Chainguard's static image: no shell, no package manager, no interpreter,
+# no libc. It holds exactly one file the project built. The restore tool is never copied in.
 
 # ============================================
-# Builder Stage — has uv; installs the locked venv
+# Builder stage
 # ============================================
-FROM cgr.dev/chainguard/python:latest-dev@sha256:8a5780972067cfba4592b10e786a889807ed876c1100f89410fd0ed4e398992c AS builder
+FROM docker.io/library/rust:1.94.1-alpine@sha256:77237dd363a0b127bb5ef532c2d64c0deb380b738e43a9c4bdac73398d6d0a08 AS builder
 
-USER root
-WORKDIR /app
+WORKDIR /build
 
-COPY --from=ghcr.io/astral-sh/uv:0.11@sha256:77280f2f771df71f90786c314fe1bbc1e023feac652969bbf139c280babf2eb7 /uv /uvx /usr/local/bin/
+COPY Cargo.toml Cargo.lock ./
+COPY crates ./crates
 
-ENV UV_PROJECT_ENVIRONMENT=/app/.venv \
-    UV_LINK_MODE=copy \
-    UV_COMPILE_BYTECODE=1 \
-    UV_PYTHON_DOWNLOADS=never
-
-COPY pyproject.toml uv.lock ./
-RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --frozen --no-dev --no-install-project
+RUN --mount=type=cache,target=/usr/local/cargo/registry \
+    --mount=type=cache,target=/build/target \
+    cargo build --release --locked -p backvault --target x86_64-unknown-linux-musl \
+    && cp target/x86_64-unknown-linux-musl/release/backvault /backvault
 
 # ============================================
-# Runtime Stage — distroless (no shell, no package manager)
+# Runtime stage — distroless static
 # ============================================
-FROM cgr.dev/chainguard/python:latest@sha256:60e3c0d33ab77e50ace0850ccdf6eaec825ce89dad9b1ec2b0300a2070892b05
+FROM cgr.dev/chainguard/static:latest@sha256:fc42af33e643f20d08baf03cddcc1c02ba57052dfb02edb0d79f3fc47bcea8d9
 
 USER 1000:1000
 WORKDIR /app
 
-# Python virtual environment
-COPY --from=builder --chown=1000:1000 /app/.venv /app/.venv
+COPY --from=builder --chown=1000:1000 /backvault /app/backvault
 
-# Application code
-COPY --chown=1000:1000 ./src/ /app/
-COPY --chown=1000:1000 ./entrypoint.py /app/entrypoint.py
+ENV HOME=/app
 
-ENV PATH="/app/.venv/bin:$PATH" \
-    HOME=/app
-
-ENTRYPOINT ["python", "/app/entrypoint.py"]
+ENTRYPOINT ["/app/backvault"]

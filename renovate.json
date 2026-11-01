@@ -13,12 +13,24 @@
     "before 5am every weekday",
     "every weekend"
   ],
-  "ignoreDeps": ["ghcr.io/yourusername/backvault"],
+  "ignoreDeps": ["ghcr.io/tgrecojr/backvault"],
   "prConcurrentLimit": 3,
   "prCreation": "immediate",
   "rebaseWhen": "behind-base-branch",
   "automerge": true,
   "platformAutomerge": true,
+  "customManagers": [
+    {
+      "description": "rust-toolchain.toml pins the toolchain used by developers, CI, and releases",
+      "customType": "regex",
+      "managerFilePatterns": ["/^rust-toolchain\\.toml$/"],
+      "matchStrings": ["channel = \"(?<currentValue>\\d+\\.\\d+\\.\\d+)\""],
+      "depNameTemplate": "rust",
+      "packageNameTemplate": "rust-lang/rust",
+      "datasourceTemplate": "github-releases",
+      "versioningTemplate": "semver"
+    }
+  ],
   "packageRules": [
     {
       "description": "Pin digests for all Docker images",
@@ -26,7 +38,7 @@
       "pinDigests": true
     },
     {
-      "description": "Group all minor and patch updates together with a 3-day stability window",
+      "description": "Group all minor and patch updates (crates included) together with a 3-day stability window",
       "matchUpdateTypes": ["minor", "patch"],
       "groupName": "all non-major dependencies",
       "groupSlug": "all-minor-patch",
@@ -47,15 +59,11 @@
       "minimumReleaseAge": null
     },
     {
-      "description": "Python (pep621/uv) deps follow the all-minor-patch group; called out for visibility",
-      "matchManagers": ["pep621"],
-      "matchUpdateTypes": ["minor", "patch"]
-    },
-    {
-      "description": "Keep the Chainguard builder (python:latest-dev) and runtime (python:latest) in lockstep — one PR, never desynced, so the venv copied from the builder always matches the runtime Python.",
-      "matchDepNames": ["cgr.dev/chainguard/python"],
-      "groupName": "chainguard python base images",
-      "groupSlug": "chainguard-python-base"
+      "description": "Keep rust-toolchain.toml and the Rust builder image on one version in a single PR, so the image build and the developer toolchain never diverge (IMAGE-DEPS-004).",
+      "matchDepNames": ["rust", "docker.io/library/rust"],
+      "groupName": "rust toolchain",
+      "groupSlug": "rust-toolchain",
+      "automerge": false
     }
   ],
   "vulnerabilityAlerts": {

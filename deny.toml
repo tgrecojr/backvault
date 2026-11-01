@@ -1,0 +1,41 @@
+# cargo-deny policy (IMAGE-DEPS-005): advisories fail the build, licences are restricted to a
+# permissive allow-list, duplicate crate versions warn, and crates come only from crates.io.
+
+[graph]
+targets = [
+    "x86_64-unknown-linux-musl",
+    "aarch64-unknown-linux-musl",
+    "aarch64-apple-darwin",
+    "x86_64-apple-darwin",
+]
+all-features = false
+
+[advisories]
+version = 2
+yanked = "deny"
+ignore = []
+
+[licenses]
+version = 2
+allow = [
+    "AGPL-3.0-only", # this project's own crates
+    "MIT",
+    "Apache-2.0",
+    "CDLA-Permissive-2.0", # Mozilla root store data (webpki-root-certs, webpki-roots)
+    "BSD-3-Clause",
+    "ISC",
+    "Unicode-3.0",
+    "Zlib",
+]
+confidence-threshold = 0.8
+
+[bans]
+multiple-versions = "warn"
+wildcards = "deny"
+allow-wildcard-paths = true # workspace path dependencies carry no version requirement
+highlight = "all"
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]

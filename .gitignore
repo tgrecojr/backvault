@@ -1,17 +1,37 @@
+# Environment
 .env
+.env.*
+.env.local
+!.env-example
+
+# Rust
+target/
+
+# Local tooling remnants
+.venv/
 __pycache__/
 .ruff_cache/
 .pytest_cache/
-.venv/
+.coverage
+htmlcov/
+.python-version
+.serena
+.cache_ggshield
+
+# Data written by a local run
 backup/
 backups/
 logs/
-/decrypt.py
-.vscode/
-.python-version
-.serena
-htmlcov/
-.coverage
 
-# Added by ggshield
-.cache_ggshield
+# Claude local files
+.claude/settings.local.json
+CLAUDE.local.md
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db

@@ -1,0 +1,40 @@
+{
+  "encrypted": false,
+  "folders": [
+    {
+      "id": "0f1d6a1c-1111-4a2b-9c3d-000000000001",
+      "name": "Fixture Folder"
+    }
+  ],
+  "items": [
+    {
+      "id": "6b2f0d8e-2222-4c4d-8e5f-000000000002",
+      "organizationId": null,
+      "folderId": "0f1d6a1c-1111-4a2b-9c3d-000000000001",
+      "type": 1,
+      "reprompt": 0,
+      "name": "Fixture Login",
+      "notes": null,
+      "favorite": false,
+      "fields": [],
+      "login": {
+        "uris": [
+          {
+            "match": null,
+            "uri": "https://example.invalid"
+          }
+        ],
+        "username": "fixture-user",
+        "password": "fixture-not-a-real-secret",
+        "totp": null,
+        "fido2Credentials": []
+      },
+      "passwordHistory": [],
+      "creationDate": "2026-01-01T00:00:00.000Z",
+      "revisionDate": "2026-01-01T00:00:00.000Z",
+      "deletedDate": null,
+      "archivedDate": null,
+      "collectionIds": null
+    }
+  ]
+}

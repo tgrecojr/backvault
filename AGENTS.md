@@ -2,37 +2,48 @@
 
 ## Overview
 
-BackVault is a Dockerized service that periodically backs up a Bitwarden or Vaultwarden vault into password-protected encrypted files. Its purpose is disaster recovery: after a Vaultwarden rebuild, the operator decrypts the newest backup and restores it through "Import data → Bitwarden (json)". Functional correctness of that restore path outranks every other concern.
+BackVault is a Dockerized service that periodically backs up a Bitwarden or Vaultwarden vault into password-protected encrypted files. Its purpose is disaster recovery: after a Vaultwarden rebuild, the operator decrypts the newest backup with the standalone `backvault-decrypt` tool and restores it through "Import data → Bitwarden (json)". Functional correctness of that restore path outranks every other concern.
 
 ## Tech Stack
 
-- Language: Python 3.14 (`uv` for environments and locking)
-- Runtime: Chainguard distroless Python container, non-root, `linux/amd64`
-- Vault access: native Python client of the Bitwarden API (`src/vault_client.py`), standard-library HTTPS
-- Crypto: `cryptography` (AES-256-GCM), `argon2-cffi` (Argon2id)
-- Tests: pytest; lint/format: ruff
-- CI: GitHub Actions (test, supply-chain scan, build/sign/publish, GHCR retention); Renovate
+- Language: Rust (toolchain pinned in `rust-toolchain.toml`, edition 2024), one Cargo workspace with three crates
+- Runtime: Chainguard `static` distroless container, one statically linked musl binary, non-root, `linux/amd64`
+- Vault access: native client of the Bitwarden API over `ureq` + `rustls` (`crates/backvault/src/vault/`)
+- Crypto: RustCrypto crates (`aes-gcm`, `argon2`, `pbkdf2`, `aes` + `cbc`, `hmac`, `hkdf`, `sha2`); secrets in `zeroize` containers
+- Restore tool: `backvault-decrypt`, released for macOS (arm64, x86_64) and Linux (x86_64, arm64) on `v*` tags
+- Tests: `cargo test` (integration tests under each crate's `tests/`); lint: `cargo clippy -D warnings`; format: `cargo fmt`
+- CI: GitHub Actions (test, supply-chain scan with OSV and cargo-deny, build/sign/publish image, restore-tool release, GHCR retention); Renovate
 
 ## Commands
 
-- `uv venv --python 3.14 && uv sync --frozen` — create the venv and install locked dependencies
-- `.venv/bin/python -m pytest` — run tests
-- `uv run ruff check src/` — lint
-- `uv run ruff format --check src/` — format check
+- `cargo test --workspace --locked` — run all tests (format fixtures and restore-tool subprocess tests included)
+- `cargo clippy --workspace --all-targets --locked -- -D warnings` — lint
+- `cargo fmt --all -- --check` — format check
+- `cargo deny check` — advisories, licences, bans, sources (policy in `deny.toml`)
+- `cargo build --release -p backvault-decrypt` — build the restore tool locally
 - `docker build --platform linux/amd64 -t backvault:local .` — build the image
+- `docker run --rm backvault:local --version` — smoke-test the image
 - `docker compose up -d` — run the reference deployment (needs `.env`)
-- `.venv/bin/python src/decrypt.py <file.enc>` — decrypt a raw-mode backup
+- `backvault-decrypt <file.enc>` — decrypt a backup (prompts for the password; plaintext to stdout)
 
 ## Architecture
 
-A single pipeline supervised by `entrypoint.py` (PID 1): every `BACKUP_INTERVAL_HOURS` it runs `src/run.py`, which validates configuration, calls `src/vault_client.py` (API-key login → master-key derivation → user-key unwrap → `/api/sync` → local decryption → Bitwarden-format JSON), encrypts the export in memory (`src/backup_crypto.py`), and writes `backup_<timestamp>.enc` to `/app/backups`. Once per calendar day the supervisor prunes files older than `RETAIN_DAYS`. `src/decrypt.py` is the standalone restore tool.
+One Cargo workspace:
 
-The design is tracked as five arrow segments under `docs/intent/`: vault-access, backup-encryption, backup-cycle, scheduler-retention, image-delivery. See `docs/high-level-design.md` for the map.
+| Crate | Kind | Holds |
+|-------|------|-------|
+| `backvault-format` | library | The `.enc` layout, key derivation, encrypt and decrypt. No IO. |
+| `backvault` | library + binary | The service: `vault/` (client), `cycle/` (one backup), `scheduler.rs` (loop, retention), `logging.rs`, `main.rs` (PID 1) |
+| `backvault-decrypt` | binary | The restore tool: password prompt, file IO, one call into `backvault-format` |
+
+The service's `main` installs logging, registers SIGTERM/SIGINT, and runs the supervisor: every `BACKUP_INTERVAL_HOURS` it runs one cycle (validate configuration, call the vault client, encrypt in memory, write `.part`, fsync, rename to `backup_<UTC timestamp>.enc` under `/app/backups`); once per UTC calendar day it prunes files older than `RETAIN_DAYS`. Every secret lives in a zeroizing container; the restore tool is never in the image.
+
+The design is tracked as five arrow segments under `docs/intent/`: vault-access, backup-encryption, backup-cycle, scheduler-retention, delivery. See `docs/high-level-design.md` for the map.
 
 ## Environment Variables
 
 Required: `BW_CLIENT_ID`, `BW_CLIENT_SECRET`, `BW_PASSWORD`, `BW_SERVER`, `BW_FILE_PASSWORD`.
-Optional: `BACKUP_DIR`, `BACKUP_INTERVAL_HOURS`, `RETAIN_DAYS`, `LOG_FILE`, `BW_CA_CERT`. (`BACKUP_ENCRYPTION_MODE` is accepted only as `raw`; any other value stops the cycle with an explanation.)
+Optional: `BACKUP_DIR`, `BACKUP_INTERVAL_HOURS`, `RETAIN_DAYS`, `LOG_FILE`, `BW_CA_CERT`. (`BACKUP_ENCRYPTION_MODE` is accepted only as `raw`; any other value fails the cycle with an explanation.)
 Template: `.env-example`. Never commit `.env`.
 
 ## LID
@@ -79,7 +90,7 @@ Stop after each phase for user review. **Docs carry current intent, written to b
 Annotate code and tests with `@spec` comments citing EARS IDs:
 
 ```
-# @spec VAULT-SESSION-001, VAULT-SESSION-002
+// @spec VAULT-SESSION-001, VAULT-SESSION-002
 ```
 
 Place the annotation at the *entry point of the behavior's implementation graph* — the topmost function or module owning the specified behavior, not every helper. When a behavior spans multiple subsystems (UI + API + database, for example), annotate at the entry point in each subsystem. Tests follow the same rule: annotate the test that directly exercises the spec, not every inner assertion.
