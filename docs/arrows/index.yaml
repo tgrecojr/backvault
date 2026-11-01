@@ -1,0 +1,79 @@
+schema_version: 2
+last_updated: 2026-11-01
+
+# Organizational grouping only; follows the backup data flow.
+taxonomy:
+  backup-pipeline:
+    - vault-access
+    - backup-encryption
+    - backup-cycle
+  service:
+    - scheduler-retention
+  delivery: standalone
+
+# Flat depth-2 design tree: every segment is a leaf directly under
+# docs/high-level-design.md.
+arrows:
+  vault-access:
+    status: MAPPED
+    parent: null
+    sampled: 2026-11-01
+    audited: null
+    audited_sha: null
+    blocks: [backup-cycle, image-delivery]
+    blockedBy: []
+    detail: vault-access.md
+    next: "Run the pre-merge drill: diff native export against `bw export --format json` of the same vault, import into a scratch Vaultwarden, pin REFERENCE_CLI_VERSION and resolve VAULT-EXPORT-012."
+    drift: "Native client implemented and unit-tested; restore not yet verified against a real vault."
+
+  backup-encryption:
+    status: MAPPED
+    parent: null
+    sampled: 2026-11-01
+    audited: null
+    audited_sha: null
+    blocks: [backup-cycle]
+    blockedBy: []
+    detail: backup-encryption.md
+    next: "Non-zero exit from decrypt.py on failure (ENC-TOOL-002)."
+    drift: null
+
+  backup-cycle:
+    status: MAPPED
+    parent: null
+    sampled: 2026-11-01
+    audited: null
+    audited_sha: null
+    blocks: [scheduler-retention]
+    blockedBy: [vault-access, backup-encryption]
+    detail: backup-cycle.md
+    next: "Align .env-example with the raw-only, BW_CA_CERT configuration (blocked by tooling deny rule on .env* files)."
+    drift: null
+
+  scheduler-retention:
+    status: MAPPED
+    parent: null
+    sampled: 2026-11-01
+    audited: null
+    audited_sha: null
+    blocks: []
+    blockedBy: [backup-cycle]
+    detail: scheduler-retention.md
+    next: "Confine BACKUP_DIR to /app before cleanup deletes (SCHED-RETAIN-008); fix README 'midnight' wording."
+    drift: null
+
+  image-delivery:
+    status: MAPPED
+    parent: null
+    sampled: 2026-11-01
+    audited: null
+    audited_sha: null
+    blocks: []
+    blockedBy: [vault-access]
+    detail: image-delivery.md
+    next: "Confirm the revised docker-build-test job passes in CI; fix compose image name and SETUP.md claims."
+    drift: null
+
+unmapped:
+  docs:
+    intent: []
