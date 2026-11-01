@@ -4,7 +4,7 @@ Builds, verifies, signs, and publishes the container image and the restore-tool 
 
 ## Status
 
-**PARTIAL** — the Dockerfile, workflows, `deny.toml`, `rust-toolchain.toml`, Renovate policy, and documentation are written; 17 of 26 specs are verified by inspection or a local build. The 9 CI and release specs are verified only by an observed run, which happens on the first pull request and the first `v*` tag.
+**PARTIAL** — the Dockerfile, workflows, `deny.toml`, `rust-toolchain.toml`, Renovate policy, and documentation are written; 18 of 26 specs are verified by inspection, a local build, or the observed pull-request run (fmt, clippy, tests, image build, smoke test all green). The remaining 8 are the main-branch scan and publish steps and the release workflow, verified only by observing the first merge and the first `v*` tag.
 
 ## References
 
@@ -50,11 +50,11 @@ Builds, verifies, signs, and publishes the container image and the restore-tool 
 |----------|----------|-------------|----------|------|
 | Image build | IMAGE-BUILD-001 to 003, 005 to 008 | 7 | 0 | 0 |
 | Reference deployment | IMAGE-RUN-001 to 004 | 4 | 0 | 0 |
-| CI pipeline | IMAGE-CI-001 to 006 | 0 | 0 | 6 |
+| CI pipeline | IMAGE-CI-001 to 006 | 1 | 0 | 5 |
 | Release pipeline | IMAGE-RELEASE-001 to 005 | 2 | 0 | 3 |
 | Dependency policy | IMAGE-DEPS-001, 002, 004, 005 | 4 | 0 | 0 |
 
-**Summary:** 17 of 26 active specs verified; 9 await their first observed CI or release run. These specs are verified by inspection and by CI runs, not by unit tests.
+**Summary:** 18 of 26 active specs verified; 8 await the first merge to main and the first release. These specs are verified by inspection and by CI runs, not by unit tests.
 
 ## Key Findings
 
@@ -66,7 +66,7 @@ Builds, verifies, signs, and publishes the container image and the restore-tool 
 ## Work Required
 
 ### Must Fix
-1. Open the pull request and confirm `test.yml` and the supply-chain scan pass (IMAGE-CI-001, 002, 005); confirm the first publish signs and attests (IMAGE-CI-003, 004).
+1. Merge and confirm the supply-chain scan passes on main (IMAGE-CI-002), the Socket step self-skips on a bot PR (IMAGE-CI-005), and the first publish signs and attests (IMAGE-CI-003, 004).
 2. Push the first `v*` tag and confirm four tested, signed, attested assets appear on the release (IMAGE-RELEASE-001 to 003).
 
 ### Should Fix

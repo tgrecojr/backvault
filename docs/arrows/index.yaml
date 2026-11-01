@@ -73,7 +73,7 @@ arrows:
     blockedBy: [vault-access, backup-encryption, scheduler-retention]
     detail: delivery.md
     next: "Observe the first PR run of test.yml and the supply-chain scan, the first publish, and the first v* release."
-    drift: "Workflows and image are written and the image builds locally; the 9 CI and release specs await an observed run."
+    drift: "PR checks observed green; the 8 main-branch scan, publish, and release specs await the first merge and the first v* tag."
 
 unmapped:
   docs:
