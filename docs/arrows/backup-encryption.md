@@ -4,7 +4,7 @@ Defines the `.enc` backup format in the `backvault-format` crate and ships the `
 
 ## Status
 
-**MAPPED** — Rust implementation complete; 22 of 22 specs implemented and tested, both format fixtures decrypt on every run. The released binary has not yet been exercised on a bare macOS and Linux machine (that happens with the first tagged release).
+**MAPPED** — Rust implementation complete; 22 of 22 specs implemented and tested, both format fixtures decrypt on every run. A locally built `backvault-decrypt` on macOS has restored a real backup (2026-11-01); the released assets for macOS and Linux have not yet been exercised, which happens with the first tagged release.
 
 ## References
 
@@ -58,7 +58,7 @@ Defines the `.enc` backup format in the `backvault-format` crate and ships the `
 *(none)*
 
 ### Should Fix
-1. Open the newest real backup with the first released binary on a macOS and a Linux machine (HLD success metric).
+1. Open the newest real backup with the released macOS and Linux assets once `v1.0.0` is tagged (HLD success metric).
 2. Decide the version 1 support horizon (LLD Deferred 2).
 
 ### Nice to Have

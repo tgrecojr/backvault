@@ -24,8 +24,8 @@ arrows:
     blocks: [backup-cycle, delivery]
     blockedBy: []
     detail: vault-access.md
-    next: "Restore drill on a real backup (decrypt with backvault-decrypt, import into scratch Vaultwarden, compare counts); pin REFERENCE_CLI_VERSION and resolve VAULT-EXPORT-012."
-    drift: "Restore drill waived by the maintainer at the 2026-11-01 merge of the native client; import compatibility of the Rust export is unverified until the drill runs."
+    next: "Exercise a Bitwarden Cloud account once; optionally diff against bw export to settle VAULT-EXPORT-012."
+    drift: null
 
   backup-encryption:
     status: MAPPED
@@ -36,7 +36,7 @@ arrows:
     blocks: [backup-cycle, delivery]
     blockedBy: []
     detail: backup-encryption.md
-    next: "Open the newest real backup with the first released binary on a macOS and a Linux machine."
+    next: "Tag v1.0.0 and open a real backup with the released macOS and Linux assets (a locally built macOS binary has already restored one)."
     drift: null
 
   backup-cycle:
