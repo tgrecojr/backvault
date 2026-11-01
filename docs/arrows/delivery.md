@@ -4,7 +4,7 @@ Builds, verifies, signs, and publishes the container image and the restore-tool 
 
 ## Status
 
-**PARTIAL** — the Dockerfile, workflows, `deny.toml`, `rust-toolchain.toml`, Renovate policy, and documentation are written; 18 of 26 specs are verified by inspection, a local build, or the observed pull-request run (fmt, clippy, tests, image build, smoke test all green). The remaining 8 are the main-branch scan and publish steps and the release workflow, verified only by observing the first merge and the first `v*` tag.
+**MAPPED** — 25 of 26 specs verified: pull-request checks, the main-branch scan and signed publish, and the `v1.0.0` release run have all been observed green. The release produced four tested binaries with checksums, Sigstore bundles, and SLSA provenance; the macOS arm64 asset was downloaded, verified with `gh attestation verify`, and decrypted the format fixture byte for byte. The one open spec is the weekly GHCR retention run, verified when it next fires.
 
 ## References
 
@@ -50,11 +50,11 @@ Builds, verifies, signs, and publishes the container image and the restore-tool 
 |----------|----------|-------------|----------|------|
 | Image build | IMAGE-BUILD-001 to 003, 005 to 008 | 7 | 0 | 0 |
 | Reference deployment | IMAGE-RUN-001 to 004 | 4 | 0 | 0 |
-| CI pipeline | IMAGE-CI-001 to 006 | 1 | 0 | 5 |
-| Release pipeline | IMAGE-RELEASE-001 to 005 | 2 | 0 | 3 |
+| CI pipeline | IMAGE-CI-001 to 006 | 5 | 0 | 1 |
+| Release pipeline | IMAGE-RELEASE-001 to 005 | 5 | 0 | 0 |
 | Dependency policy | IMAGE-DEPS-001, 002, 004, 005 | 4 | 0 | 0 |
 
-**Summary:** 18 of 26 active specs verified; 8 await the first merge to main and the first release. These specs are verified by inspection and by CI runs, not by unit tests.
+**Summary:** 25 of 26 active specs verified; IMAGE-CI-006 awaits the next weekly retention run. IMAGE-CI-005 (Socket self-skip without the secret) is verified by inspection of the `if:` guard: the scan runs only on pushes to `main`, where the secret is present, so the skip path is dormant rather than exercised. These specs are verified by inspection and by CI runs, not by unit tests.
 
 ## Key Findings
 
@@ -66,12 +66,11 @@ Builds, verifies, signs, and publishes the container image and the restore-tool 
 ## Work Required
 
 ### Must Fix
-1. Merge and confirm the supply-chain scan passes on main (IMAGE-CI-002), the Socket step self-skips on a bot PR (IMAGE-CI-005), and the first publish signs and attests (IMAGE-CI-003, 004).
-2. Push the first `v*` tag and confirm four tested, signed, attested assets appear on the release (IMAGE-RELEASE-001 to 003).
+*(none)*
 
 ### Should Fix
-3. Confirm the GHCR retention workflow still prunes as before (IMAGE-CI-006).
+1. Confirm the GHCR retention workflow prunes as before on its next weekly run (IMAGE-CI-006).
 
 ### Nice to Have
-4. Pin GitHub Actions by digest (LLD Deferred 2).
-5. Add a `HEALTHCHECK` once scheduler-retention exposes a heartbeat.
+2. Pin GitHub Actions by digest (LLD Deferred 2).
+3. Add a `HEALTHCHECK` once scheduler-retention exposes a heartbeat.

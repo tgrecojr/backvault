@@ -36,7 +36,7 @@ arrows:
     blocks: [backup-cycle, delivery]
     blockedBy: []
     detail: backup-encryption.md
-    next: "Tag v1.0.0 and open a real backup with the released macOS and Linux assets (a locally built macOS binary has already restored one)."
+    next: "Open a real backup with the released Linux asset once (the released macOS asset has decrypted the fixture; a locally built macOS binary has restored a real backup)."
     drift: null
 
   backup-cycle:
@@ -64,7 +64,7 @@ arrows:
     drift: null
 
   delivery:
-    status: PARTIAL
+    status: MAPPED
     parent: null
     sampled: 2026-11-01
     audited: null
@@ -72,8 +72,8 @@ arrows:
     blocks: []
     blockedBy: [vault-access, backup-encryption, scheduler-retention]
     detail: delivery.md
-    next: "Observe the first PR run of test.yml and the supply-chain scan, the first publish, and the first v* release."
-    drift: "PR checks observed green; the 8 main-branch scan, publish, and release specs await the first merge and the first v* tag."
+    next: "Confirm the weekly GHCR retention run (IMAGE-CI-006); consider pinning GitHub Actions by digest."
+    drift: null
 
 unmapped:
   docs:

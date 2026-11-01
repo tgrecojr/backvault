@@ -24,17 +24,17 @@ Status: `[x]` implemented and observed working · `[ ]` specified, not yet imple
 ## CI pipeline (image)
 
 - [x] **IMAGE-CI-001**: When a pull request is opened or updated, CI shall run `cargo fmt --check`, `cargo clippy --workspace --all-targets` with warnings denied, and `cargo test --workspace --locked`, build the `linux/amd64` image, and smoke-test the built image by running `/app/backvault --version` under Docker's default seccomp profile.
-- [ ] **IMAGE-CI-002**: When a commit is pushed to `main`, CI shall run the supply-chain scan (Socket when its API key is present, OSV against `Cargo.lock`, `cargo-deny` advisories, licences, and bans) before any image is built.
-- [ ] **IMAGE-CI-003**: When the supply-chain scan succeeds on `main`, CI shall build and push the image to `ghcr.io/tgrecojr/backvault` tagged `latest` and `main-<short-sha>`.
-- [ ] **IMAGE-CI-004**: When an image is pushed, CI shall sign it by digest with cosign keyless, generate an SPDX SBOM, and push attestations for both the SBOM and the build provenance to the registry.
-- [ ] **IMAGE-CI-005**: If the Socket API-key secret is unavailable (bot-authored pull requests), then CI shall skip the Socket step and still run the remaining scans.
+- [x] **IMAGE-CI-002**: When a commit is pushed to `main`, CI shall run the supply-chain scan (Socket when its API key is present, OSV against `Cargo.lock`, `cargo-deny` advisories, licences, and bans) before any image is built.
+- [x] **IMAGE-CI-003**: When the supply-chain scan succeeds on `main`, CI shall build and push the image to `ghcr.io/tgrecojr/backvault` tagged `latest` and `main-<short-sha>`.
+- [x] **IMAGE-CI-004**: When an image is pushed, CI shall sign it by digest with cosign keyless, generate an SPDX SBOM, and push attestations for both the SBOM and the build provenance to the registry.
+- [x] **IMAGE-CI-005**: If the Socket API-key secret is unavailable (bot-authored pull requests), then CI shall skip the Socket step and still run the remaining scans.
 - [ ] **IMAGE-CI-006**: Weekly and on manual dispatch, CI shall prune the GHCR package to the `latest` tag plus the 5 most recent tagged versions and delete untagged versions.
 
 ## Release pipeline (restore tool)
 
-- [ ] **IMAGE-RELEASE-001**: When a tag matching `v*` is pushed, CI shall build `backvault-decrypt` for `aarch64-apple-darwin`, `x86_64-apple-darwin`, `x86_64-unknown-linux-musl`, and `aarch64-unknown-linux-musl`, the Linux builds statically linked.
-- [ ] **IMAGE-RELEASE-002**: Before publishing a release asset, CI shall run the restore tool's test suite on the runner that built that target, and if the tests fail for any target, then no release shall be published.
-- [ ] **IMAGE-RELEASE-003**: CI shall attach to the GitHub Release, for each target, the binary named `backvault-decrypt-<target>`, its SHA-256 checksum file, a cosign keyless signature bundle, and a GitHub build-provenance attestation.
+- [x] **IMAGE-RELEASE-001**: When a tag matching `v*` is pushed, CI shall build `backvault-decrypt` for `aarch64-apple-darwin`, `x86_64-apple-darwin`, `x86_64-unknown-linux-musl`, and `aarch64-unknown-linux-musl`, the Linux builds statically linked.
+- [x] **IMAGE-RELEASE-002**: Before publishing a release asset, CI shall run the restore tool's test suite on the runner that built that target, and if the tests fail for any target, then no release shall be published.
+- [x] **IMAGE-RELEASE-003**: CI shall attach to the GitHub Release, for each target, the binary named `backvault-decrypt-<target>`, its SHA-256 checksum file, a cosign keyless signature bundle, and a GitHub build-provenance attestation.
 - [x] **IMAGE-RELEASE-004**: The release notes and the README shall state how to verify a downloaded binary with `cosign verify-blob` and `gh attestation verify`, the `xattr -d com.apple.quarantine` command macOS requires before running it, and the `cargo build --release -p backvault-decrypt` command for building it from source.
 - [x] **IMAGE-RELEASE-005**: The repository shall pin the Rust toolchain in `rust-toolchain.toml`, and CI and release builds shall use that pinned toolchain.
 
