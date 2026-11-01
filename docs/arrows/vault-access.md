@@ -4,7 +4,7 @@ Turns Bitwarden/Vaultwarden credentials into a plaintext vault export in memory,
 
 ## Status
 
-**MAPPED** — Rust implementation complete; 52 of 53 specs implemented and unit-tested. **Restore is unverified:** the maintainer waived the restore drill (decrypt a real backup, import into a scratch Vaultwarden, compare counts; optionally diff against `bw export --format json`) at the previous merge, accepting the import-compatibility risk for backups taken from that version on. Historical backups are unaffected (file format unchanged). Any session that touches this segment should offer to run the drill on a real backup first; until it runs, VAULT-EXPORT-012 stays open.
+**MAPPED** — Rust implementation complete; 52 of 53 specs implemented and unit-tested. **Restore verified 2026-11-01:** the maintainer decrypted a backup written by this implementation with a locally built `backvault-decrypt` and imported it into Vaultwarden successfully. The optional diff against `bw export --format json` has not been run, so VAULT-EXPORT-012 (empty-collection shape pinned to the CLI release) stays open as a refinement rather than a risk to restores.
 
 ## References
 
@@ -56,7 +56,7 @@ Turns Bitwarden/Vaultwarden credentials into a plaintext vault export in memory,
 
 ## Key Findings
 
-1. **Restore guarantee rests on the drill.** Unit tests prove the client decrypts correctly constructed data and shapes it as designed; only a diff against the real CLI and a real import prove the shape matches what Bitwarden accepts. `REFERENCE_CLI_VERSION` is `2025.1.3` pending that drill.
+1. **Restore is proven by a real import.** Unit tests prove the client decrypts correctly constructed data and shapes it as designed; a backup from this implementation has been imported into Vaultwarden. `REFERENCE_CLI_VERSION` is `2025.1.3`; a diff against that CLI release would additionally pin the empty-collection shape.
 2. **Field-level failures match the CLI.** An undecryptable field becomes `[error: cannot decrypt]` with an ERROR log naming item and field; the cycle succeeds. Capability gaps (sealed-blob ciphers, EncString types 1/3–7, item types 6–8, missing or wrongly typed `Key`/`Kdf`) fail the cycle.
 3. **No secrets cross a process boundary and none survive the call.** Every secret lives in a `Zeroizing` container; the error type's display form carries none.
 4. **Organization items are excluded by design**, matching the CLI's individual export; the count is logged so the operator sees it.
@@ -65,12 +65,11 @@ Turns Bitwarden/Vaultwarden credentials into a plaintext vault export in memory,
 ## Work Required
 
 ### Must Fix
-*(none — the restore drill was consciously waived at the previous merge; it is the top Should Fix)*
+*(none)*
 
 ### Should Fix
-1. Run the restore drill on a real backup: decrypt it with `backvault-decrypt`, import into a scratch Vaultwarden, compare item and folder counts; optionally diff against `bw export --format json --raw` of the same vault (parsed, sorted, `null`/`[]`/absent distinct), resolve VAULT-EXPORT-012, and pin `REFERENCE_CLI_VERSION` to the CLI release used.
-2. Add the comparison script used by the drill to the repository so it is repeatable (LLD Deferred 6).
-3. Exercise a Bitwarden Cloud account once to confirm the token response shape (LLD Deferred 1).
+1. Exercise a Bitwarden Cloud account once to confirm the token response shape (LLD Deferred 1).
 
 ### Nice to Have
-4. Document Argon2id memory headroom for the container (LLD Deferred 3).
+2. Diff a native export against `bw export --format json --raw` of the same vault (parsed, sorted, `null`/`[]`/absent distinct) to settle VAULT-EXPORT-012 and pin `REFERENCE_CLI_VERSION` to the CLI release used; add the comparison script to the repository (LLD Deferred 6).
+3. Document Argon2id memory headroom for the container (LLD Deferred 3).
