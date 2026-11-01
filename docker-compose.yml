@@ -1,12 +1,10 @@
 services:
   backvault:
-    # Use published image from GitHub Container Registry
-    # Replace 'yourusername' with your GitHub username
-    # renovate: ignore
-    image: ghcr.io/yourusername/backvault:latest
+    # Published image from GitHub Container Registry (linux/amd64)
+    image: ghcr.io/tgrecojr/backvault:latest
 
     # OR: Build locally (uncomment the line below and comment out 'image' above)
-    # IMPORTANT: On macOS, you MUST specify the platform. See BUILD.md for details.
+    # On macOS the image is amd64; see BUILD.md.
     # build:
     #   context: .
     #   platforms:

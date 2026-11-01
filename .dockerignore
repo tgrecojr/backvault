@@ -1,23 +1,9 @@
-.env-example
-.env
-.git/
-.gitignore
-.venv/
-.ruff_cache/
-.pytest_cache/
-.serena/
-.claude/
-.vscode/
-.idea/
-__pycache__/
-*.pyc
-.coverage
-htmlcov/
-tests/
-logs/
-backup/
-backups/
-LICENSE
-README.md
-BUILD.md
-.DS_Store
+# Allow-list: the image build sees only the workspace manifests and the crate sources.
+# rust-toolchain.toml is deliberately excluded so rustup never downloads a toolchain
+# inside the builder (IMAGE-BUILD-008); the builder uses the toolchain its image ships.
+*
+!Cargo.toml
+!Cargo.lock
+!crates/
+crates/*/tests/
+crates/*/target/

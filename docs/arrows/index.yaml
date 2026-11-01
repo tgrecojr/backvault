@@ -9,7 +9,8 @@ taxonomy:
     - backup-cycle
   service:
     - scheduler-retention
-  delivery: standalone
+  delivery:
+    - delivery
 
 # Flat depth-2 design tree: every segment is a leaf directly under
 # docs/high-level-design.md.
@@ -20,11 +21,11 @@ arrows:
     sampled: 2026-11-01
     audited: null
     audited_sha: null
-    blocks: [backup-cycle, image-delivery]
+    blocks: [backup-cycle, delivery]
     blockedBy: []
     detail: vault-access.md
-    next: "Run the pre-merge drill: diff native export against `bw export --format json` of the same vault, import into a scratch Vaultwarden, pin REFERENCE_CLI_VERSION and resolve VAULT-EXPORT-012."
-    drift: "Native client implemented and unit-tested; restore not yet verified against a real vault."
+    next: "Run the pre-merge drill against a real vault, pin REFERENCE_CLI_VERSION and resolve VAULT-EXPORT-012."
+    drift: "Implemented and unit-tested; restore not yet verified against a real vault."
 
   backup-encryption:
     status: MAPPED
@@ -32,10 +33,10 @@ arrows:
     sampled: 2026-11-01
     audited: null
     audited_sha: null
-    blocks: [backup-cycle]
+    blocks: [backup-cycle, delivery]
     blockedBy: []
     detail: backup-encryption.md
-    next: "Non-zero exit from decrypt.py on failure (ENC-TOOL-002)."
+    next: "Open the newest real backup with the first released binary on a macOS and a Linux machine."
     drift: null
 
   backup-cycle:
@@ -47,7 +48,7 @@ arrows:
     blocks: [scheduler-retention]
     blockedBy: [vault-access, backup-encryption]
     detail: backup-cycle.md
-    next: "Align .env-example with the raw-only, BW_CA_CERT configuration (blocked by tooling deny rule on .env* files)."
+    next: "Retire BACKUP_ENCRYPTION_MODE once deployments have dropped it."
     drift: null
 
   scheduler-retention:
@@ -56,23 +57,23 @@ arrows:
     sampled: 2026-11-01
     audited: null
     audited_sha: null
-    blocks: []
+    blocks: [delivery]
     blockedBy: [backup-cycle]
     detail: scheduler-retention.md
-    next: "Confine BACKUP_DIR to /app before cleanup deletes (SCHED-RETAIN-008); fix README 'midnight' wording."
+    next: "Decide on a heartbeat or HEALTHCHECK; document stop_grace_period in Compose."
     drift: null
 
-  image-delivery:
-    status: MAPPED
+  delivery:
+    status: PARTIAL
     parent: null
     sampled: 2026-11-01
     audited: null
     audited_sha: null
     blocks: []
-    blockedBy: [vault-access]
-    detail: image-delivery.md
-    next: "Confirm the revised docker-build-test job passes in CI; fix compose image name and SETUP.md claims."
-    drift: null
+    blockedBy: [vault-access, backup-encryption, scheduler-retention]
+    detail: delivery.md
+    next: "Observe the first PR run of test.yml and the supply-chain scan, the first publish, and the first v* release."
+    drift: "Workflows and image are written and the image builds locally; the 9 CI and release specs await an observed run."
 
 unmapped:
   docs:

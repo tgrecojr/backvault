@@ -1,341 +1,63 @@
 # Contributing to BackVault
 
-Thank you for your interest in contributing to BackVault! This document provides guidelines and instructions for contributing.
+Thanks for your interest. BackVault exists for one purpose: a backup that restores cleanly into a fresh Vaultwarden after a disaster. Every change is judged against that first.
 
-## Development Workflow
+## Prerequisites
 
-### Prerequisites
+- A Rust toolchain via [rustup](https://rustup.rs/). The repository's `rust-toolchain.toml` selects the exact version and components; rustup installs it on first use.
+- Docker, for building the service image.
+- Git.
 
-- Docker and Docker Compose
-- Python 3.14+
-- [uv](https://docs.astral.sh/uv/) for Python environment and dependency management
-- Git
-
-### Local Development
-
-1. **Clone the repository:**
-   ```bash
-   git clone https://github.com/yourusername/backvault.git
-   cd backvault
-   ```
-
-2. **Install development dependencies:**
-   ```bash
-   uv sync --frozen
-   ```
-
-3. **Run tests:**
-   ```bash
-   # Run all tests
-   uv run pytest
-
-   # Run with verbose output
-   uv run pytest -v
-
-   # Run specific test file
-   uv run pytest tests/test_encryption.py
-
-   # Run with coverage report
-   uv run pytest --cov=src --cov-report=html
-   ```
-
-4. **Run linting:**
-   ```bash
-   uv run ruff check src/
-   uv run ruff format src/
-   ```
-
-5. **Build Docker image locally:**
-   ```bash
-   docker build -t backvault:dev .
-   ```
-
-5. **Test the image:**
-   ```bash
-   docker run --rm --security-opt seccomp=unconfined \
-     -e BW_CLIENT_ID="test" \
-     -e BW_CLIENT_SECRET="test" \
-     -e BW_PASSWORD="test" \
-     -e BW_SERVER="https://vault.test.com" \
-     -e BW_FILE_PASSWORD="test" \
-     backvault:dev
-   ```
-
-## Pull Request Process
-
-1. **Create a feature branch:**
-   ```bash
-   git checkout -b feature/your-feature-name
-   ```
-
-2. **Make your changes:**
-   - Follow existing code style
-   - Add comments for complex logic
-   - Update documentation as needed
-
-3. **Test your changes:**
-   - Build the Docker image
-   - Run security scans locally
-   - Test with actual Bitwarden instance if possible
-
-4. **Commit your changes:**
-   ```bash
-   git add .
-   git commit -m "Description of your changes"
-   ```
-
-5. **Push to your fork:**
-   ```bash
-   git push origin feature/your-feature-name
-   ```
-
-6. **Create a Pull Request:**
-   - Go to GitHub and create a PR from your branch
-   - Fill in the PR template
-   - Wait for CI checks to pass
-   - Address any review comments
-
-## CI/CD Pipeline
-
-### Automated Workflows
-
-The project uses GitHub Actions for CI/CD:
-
-#### 1. **Test Workflow** (`.github/workflows/test.yml`)
-- Runs on every push and PR
-- Lints code with Ruff
-- Builds Docker image for testing
-- Verifies image can start
-
-#### 2. **Security Scan** (`.github/workflows/security-scan.yml`)
-- Runs on push, PR, and weekly schedule
-- Scans Docker image with Trivy
-- Scans Python code with Bandit
-- Uploads results to GitHub Security
-
-#### 3. **Docker Publish** (`.github/workflows/docker-publish.yml`)
-- Runs on merge to main or version tags
-- Builds multi-architecture images (amd64, arm64, arm/v7)
-- Publishes to GitHub Container Registry
-- Tags appropriately (latest, version tags)
-
-### Multi-Architecture Builds
-
-Images are automatically built for:
-- `linux/amd64` - x86_64 systems
-- `linux/arm64` - ARM64 systems (Apple Silicon, AWS Graviton)
-- `linux/arm/v7` - 32-bit ARM (Raspberry Pi)
-
-## Release Process
-
-### Creating a Release
-
-1. **Update version number:**
-   - Update `SECURITYASSESS.md` if needed
-   - Update `README.md` if needed
-
-2. **Create and push a version tag:**
-   ```bash
-   git tag -a v1.0.0 -m "Release v1.0.0"
-   git push origin v1.0.0
-   ```
-
-3. **GitHub Actions will automatically:**
-   - Build multi-arch Docker images
-   - Tag with version number and `latest`
-   - Publish to GitHub Container Registry
-   - Create GitHub release (if configured)
-
-### Version Tagging Convention
-
-Follow semantic versioning:
-- **Major version** (v1.0.0): Breaking changes
-- **Minor version** (v1.1.0): New features, backward compatible
-- **Patch version** (v1.1.1): Bug fixes, backward compatible
-
-### Docker Image Tags
-
-Images are tagged as:
-- `ghcr.io/yourusername/backvault:latest` - Latest main branch
-- `ghcr.io/yourusername/backvault:v1.0.0` - Specific version
-- `ghcr.io/yourusername/backvault:v1.0` - Minor version
-- `ghcr.io/yourusername/backvault:v1` - Major version
-
-## Code Style
-
-### Python Code
-
-- Follow PEP 8 style guide
-- Use Ruff for linting and formatting
-- Maximum line length: 100 characters
-- Use type hints where appropriate
-
-### Example:
-```python
-def example_function(param: str, count: int = 5) -> bool:
-    """
-    Brief description of the function.
-
-    :param param: Description of param
-    :param count: Description of count
-    :return: Description of return value
-    """
-    return True
-```
-
-### Shell Scripts
-
-- Use `set -euo pipefail` at the start
-- Quote all variables: `"$VARIABLE"`
-- Use long-form flags for readability: `--verbose` not `-v`
-
-### Dockerfile
-
-- Use multi-stage builds when appropriate
-- Minimize layers
-- Clean up in the same RUN command
-- Pin versions for reproducibility
-
-## Security Guidelines
-
-### Security Best Practices
-
-1. **Never commit secrets:**
-   - Use `.env` files (already in `.gitignore`)
-   - Use environment variables
-   - Use GitHub secrets for CI/CD
-
-2. **Input validation:**
-   - Validate all user inputs
-   - Use whitelists, not blacklists
-   - Sanitize before logging
-
-3. **Dependencies:**
-   - Keep dependencies updated
-   - Review security advisories
-   - Use minimal base images
-
-4. **Code review:**
-   - All PRs require review
-   - Security changes require extra scrutiny
-   - Run security scans before merging
-
-### Reporting Security Issues
-
-**DO NOT** open public issues for security vulnerabilities.
-
-Instead:
-1. Email the maintainer privately
-2. Include detailed description
-3. Include steps to reproduce
-4. Wait for response before public disclosure
-
-## Testing
-
-### Running Tests
-
-Before submitting a PR, run the test suite:
+## Local workflow
 
 ```bash
-# Run all tests
-uv run pytest
+git clone https://github.com/tgrecojr/backvault.git
+cd backvault
 
-# Run with coverage
-uv run pytest --cov=src --cov-report=term-missing
+cargo fmt --all -- --check                                   # formatting
+cargo clippy --workspace --all-targets --locked -- -D warnings  # lint, warnings are errors
+cargo test --workspace --locked                              # all tests, fixtures included
 
-# Run specific test class
-uv run pytest tests/test_encryption.py::TestArgon2Encryption -v
+docker build --platform linux/amd64 -t backvault:dev .       # the service image
+docker run --rm backvault:dev --version                      # smoke test
 ```
 
-### Test Coverage
+Run all four checks before pushing; CI runs the same commands and nothing else.
 
-We have comprehensive test coverage for:
-- **Encryption/Decryption**: Argon2id implementation, PBKDF2 backward compatibility
-- **Security Properties**: Salt randomness, nonce uniqueness, password validation
-- **Edge Cases**: Empty data, large files, unicode passwords, special characters
+## How changes are made: linked-intent development
 
-### Manual Testing Checklist
+This repository is developed with linked-intent development (LID). Design intent lives in `docs/` and flows one way: `docs/high-level-design.md` → the segment designs under `docs/intent/<segment>/` → the EARS specs beside each design → tests → code. A change starts in the docs, not in the code, and tests are written before the implementation. `CLAUDE.md` (mirrored as `AGENTS.md`) describes the workflow; `docs/arrows/index.yaml` tracks each segment's status.
 
-Before submitting a PR, test:
+Tests and code cite the spec they satisfy with `// @spec <ID>` comments. Every test file checks that the IDs it cites exist.
 
-- [ ] All pytest tests pass (`uv run pytest`)
-- [ ] Linting passes (`uv run ruff check src/`)
-- [ ] Docker image builds successfully
-- [ ] Container starts without errors
-- [ ] Backup creation works
-- [ ] Backup encryption works
-- [ ] Cleanup works
-- [ ] Retry logic works on failures
-- [ ] Logs don't expose secrets
+## Layout
 
-### Automated Tests
+| Path | What |
+|---|---|
+| `crates/backvault-format` | The `.enc` file format: encrypt and decrypt, no IO |
+| `crates/backvault-decrypt` | The standalone restore tool released for macOS and Linux |
+| `crates/backvault` | The service: vault client, backup cycle, scheduler, logging |
+| `docs/` | Design tree, specs, decision records |
+| `.github/workflows/` | PR checks, supply-chain scan, image publish, restore-tool release, registry retention |
 
-We use:
-- **Pytest** for unit and integration tests
-- **Ruff** for code linting and formatting
-- **Bandit** for security scanning
-- **Trivy** for container vulnerability scanning
-- Docker build tests in CI
+## Pull requests
 
-### Writing New Tests
+1. Branch from `main`.
+2. Walk the arrow: update the design and specs if intent changes, write or update tests, then code.
+3. Run the four local checks.
+4. Open a PR. CI must pass; Renovate PRs follow the same rules.
 
-When adding new features:
+## Releases
 
-1. **Add unit tests** in `tests/test_*.py`
-2. **Use pytest fixtures** from `tests/conftest.py`
-3. **Follow naming conventions**: `test_<feature>_<scenario>()`
-4. **Add docstrings** explaining what the test verifies
-5. **Use markers** for test categorization:
-   ```python
-   @pytest.mark.slow
-   @pytest.mark.security
-   ```
+- The service image publishes on every merge to `main` as `ghcr.io/tgrecojr/backvault:latest` and `main-<sha>`, signed with cosign and attested with an SBOM and build provenance.
+- The restore tool is released by pushing a tag `vX.Y.Z`. The workflow builds four targets, runs the tool's tests on each, signs every binary, attests provenance, and creates the GitHub Release with the notes in `.github/release-notes.md`.
 
-## Documentation
+## Security
 
-### What to Document
+Do not open public issues for vulnerabilities. Email the maintainer privately with a description and reproduction steps, and allow time for a fix before disclosure.
 
-Update documentation when:
-- Adding new features
-- Changing configuration options
-- Fixing bugs that affect users
-- Changing security practices
-- Updating dependencies
+Never commit secrets. `.env` is ignored; `.env-example` holds placeholders only.
 
-### Documentation Files
+## Licence
 
-- `README.md` - User-facing documentation
-- `SECURITYASSESS.md` - Security assessment
-- `TROUBLESHOOTING.md` - Common issues
-- This file - Contribution guidelines
-
-## Getting Help
-
-- **Questions:** Open a GitHub Discussion
-- **Bugs:** Open a GitHub Issue
-- **Security:** Email maintainer privately
-- **Features:** Open a GitHub Issue with "enhancement" label
-
-## Code of Conduct
-
-### Our Standards
-
-- Be respectful and inclusive
-- Welcome newcomers
-- Accept constructive criticism
-- Focus on what's best for the community
-
-### Unacceptable Behavior
-
-- Harassment or discrimination
-- Trolling or insulting comments
-- Publishing private information
-- Other unprofessional conduct
-
-## License
-
-By contributing, you agree that your contributions will be licensed under the AGPL-3.0 License.
-
----
-
-Thank you for contributing to BackVault! 🚀
+Contributions are licensed under AGPL-3.0, like the project.

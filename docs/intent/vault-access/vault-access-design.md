@@ -9,7 +9,7 @@ prefix: VAULT
 
 vault-access is the part of BackVault that talks to the Bitwarden or Vaultwarden server. Given an API-key credential pair, the master password, and a server URL, it produces the vault's contents as a Bitwarden-format JSON export string in memory, then discards every secret it derived. Everything downstream (encrypting, naming, placing the file, scheduling) belongs to other segments; everything that involves the server or the vault's cryptography belongs here.
 
-The segment is a native Python client of the Bitwarden API. It performs the same steps the official CLI performs internally: authenticate with the API key, derive the master key from the password, unwrap the user key, fetch the sync payload, decrypt each item locally, and assemble the export. Three principles govern it:
+The segment is a native client of the Bitwarden API, implemented inside the service binary with pure-Rust cryptography. It performs the same steps the official CLI performs internally: authenticate with the API key, derive the master key from the password, unwrap the user key, fetch the sync payload, decrypt each item locally, and assemble the export. Three principles govern it:
 
 - **The export must stay importable.** The only reason BackVault exists is to restore a vault after a disaster. The output has to be the JSON shape that `bw export --format json` produces, so the Bitwarden web vault's "Import data → Bitwarden (json)" accepts it. Where this design and the CLI could differ, the CLI wins (tenet: *Match the reference, don't improve it*).
 - **Never lose vault content silently.** Two failure classes are distinguished. When the client *cannot do its job* (the server response is not a vault, an item uses a format this client does not implement), the cycle fails with a clear error, because a backup that looks complete but is missing items is worse than no backup. When *one field* of an item cannot be decrypted (bad MAC, malformed string), the client does what the CLI does: it emits the literal `[error: cannot decrypt]` for that field, logs the item and field at ERROR, and the cycle succeeds. Backups keep flowing and the loss is visible and bounded (tenet: *Restorable beats hardened*).
@@ -28,7 +28,7 @@ The segment is a native Python client of the Bitwarden API. It performs the same
 - Self-hosted (Vaultwarden or Bitwarden self-host): `{identity} = BW_SERVER/identity`, `{api} = BW_SERVER/api`.
 - Bitwarden Cloud: `https://vault.bitwarden.com` → `https://identity.bitwarden.com` and `https://api.bitwarden.com`; `https://vault.bitwarden.eu` → the `.eu` equivalents.
 
-`BW_SERVER` is normalised by stripping trailing slashes; a scheme other than `https` fails the cycle before any request. Transport is the standard library's `urllib.request` over HTTPS with certificate verification on. An optional `BW_CA_CERT` environment variable names a PEM bundle to trust for self-signed deployments; there is no switch that disables verification. HTTP redirects are not followed: a 3xx on either endpoint fails the cycle with the redirect target in the message, since it almost always means `BW_SERVER` is wrong (a trailing path, `http://`, or a reverse proxy in front of the wrong host).
+`BW_SERVER` is normalised by stripping trailing slashes; a scheme other than `https` fails the cycle before any request. Transport is `ureq` over `rustls` with certificate verification on and a compiled-in Mozilla root store (`webpki-root-certs`), so the image needs no CA bundle. An optional `BW_CA_CERT` environment variable names a PEM bundle to trust in addition to the built-in roots, for self-signed deployments; there is no switch that disables verification. If `BW_CA_CERT` names a file that cannot be read or contains no PEM certificate, the cycle fails before any request, naming the path. Every request has a 30 s connect timeout and a 120 s read timeout; a timeout is a network error for retry purposes. The transport hands back every HTTP status as a response with its body rather than turning 4xx/5xx into transport errors, and accepts bodies up to 256 MiB, because a large vault's sync payload exceeds typical client defaults. HTTP redirects are not followed: a 3xx on either endpoint fails the cycle with the redirect target in the message, since it almost always means `BW_SERVER` is wrong (a trailing path, `http://`, or a reverse proxy in front of the wrong host).
 
 Every request carries `Bitwarden-Client-Name: cli` and `Bitwarden-Client-Version: <REFERENCE_CLI_VERSION>`. That single constant names the CLI release whose export shape this client reproduces and against which the pre-merge drill was last run; it must be at least `2024.12.0`, because Vaultwarden omits SSH-key items (type 5) from `/sync` for clients that announce an older version.
 
@@ -52,7 +52,7 @@ sequenceDiagram
     V-->>C: export JSON string
 ```
 
-One call per cycle. There is no server-side logout for an API-key token; the client simply stops using it and overwrites its copies of the token, master key, stretched keys, and user key before returning. The token's `expires_in` is far longer than a cycle and is not refreshed; a 401 or 403 on the sync request fails the cycle rather than re-authenticating, and the next cycle starts fresh.
+One call per cycle. There is no server-side logout for an API-key token; the client simply stops using it. The token, master key, stretched keys, user key, and every cipher-level key live in `Zeroizing` containers that wipe their memory on drop, at the latest when the call returns. The export itself is returned as a `Zeroizing<String>`; backup-cycle drops it as soon as it has been encrypted. The token's `expires_in` is far longer than a cycle and is not refreshed; a 401 or 403 on the sync request fails the cycle rather than re-authenticating, and the next cycle starts fresh.
 
 ## Authentication and Key Derivation
 
@@ -70,7 +70,7 @@ One call per cycle. There is no server-side logout for an API-key token; the cli
 | `UserDecryptionOptions.MasterPasswordUnlock.Salt` | the account email (the KDF salt) | fall back (below) |
 | `PrivateKey` | not used (organization items are excluded; see Export Assembly) | ignored |
 
-The sync `profile.key` is never used as a fallback for `Key`; the token response is the single source.
+A field that is present but carries the wrong JSON type fails the same way as a missing one, naming the field. The sync `profile.key` is never used as a fallback for `Key`; the token response is the single source.
 
 **Email.** Taken from `MasterPasswordUnlock.Salt`; if absent, from the JWT `email` claim (payload decoded without signature verification, since the TLS channel already authenticates the server); if still absent, from `/api/accounts/profile`. The email is trimmed and lower-cased before use.
 
@@ -109,7 +109,7 @@ Every encrypted value in the sync payload is a string of the form `<type>.<part>
 
 **Item selection** mirrors the CLI's individual-vault export: items whose `organizationId` is not null are excluded (they belong to an organization export), and items whose `deletedDate` is not null (trash) are excluded. Archived items (`archivedDate` not null) are *included*; the CLI applies no archive filter. The counts of both exclusions are logged at INFO. Items that carry `attachments` are counted and that count is logged at WARNING, because no Bitwarden export format carries attachment data and the operator should know the backup cannot restore them.
 
-**Document shape**, serialized as UTF-8 without ASCII escaping (`ensure_ascii=False`), two-space indentation, `": "` and `","` separators, no trailing newline:
+**Document shape**, serialized as UTF-8 with non-ASCII characters unescaped, two-space indentation, `": "` and `","` separators, no trailing newline. Output structs declare their fields in the order given below and the serializer emits them in declaration order:
 
 ```
 {
@@ -143,30 +143,34 @@ Every string in these objects is an EncString to decrypt except `creationDate`; 
 
 **Empty collections and absent `archivedDate`.** Whether a missing `fields`, `passwordHistory`, `fido2Credentials`, or `uris`, or an absent `archivedDate`, is emitted as `[]`, `null`, or omitted follows the CLI release named by `REFERENCE_CLI_VERSION`. The drill's comparison treats `null`, `[]`, and absent as distinct so that any divergence is caught rather than papered over.
 
-**Dates.** Every date field (`creationDate`, `revisionDate`, `deletedDate`, `archivedDate`, `passwordHistory[].lastUsedDate`, FIDO2 `creationDate`) is parsed as RFC 3339 and re-emitted in UTC with exactly three fractional digits and a `Z` suffix: six or seven digits are truncated, fewer than three are zero-padded, and a numeric offset is converted to UTC. This is the shape JavaScript's `toISOString()` produces and the CLI emits.
+**Dates.** Every date field (`creationDate`, `revisionDate`, `deletedDate`, `archivedDate`, `passwordHistory[].lastUsedDate`, FIDO2 `creationDate`) is parsed as RFC 3339 and re-emitted in UTC with exactly three fractional digits and a `Z` suffix: six or seven digits are truncated, fewer than three are zero-padded, and a numeric offset is converted to UTC. This is the shape JavaScript's `toISOString()` produces and the CLI emits. A date that cannot be parsed as RFC 3339 with an offset fails the cycle naming the item ID and field; servers always emit offset-qualified dates, and reinterpreting a naive one could diverge from the reference.
 
 **Unknown item types.** Items of any `type` other than 1–5 (6–8: bank account, passport, driver's licence) fail the cycle naming the item ID and type. Vaultwarden does not yet serve them and the CLI's handling is still changing; failing is safer than guessing.
 
 **Contract with the drill.** Two exports of the same vault are considered equivalent when, after parsing, sorting `folders` and `items` by `id`, and sorting any arrays of objects by their JSON serialization, the structures are equal, with `[error: cannot decrypt]` compared literally. Key order and whitespace are not part of the contract, but the client follows the CLI's order so that text diffs stay readable.
 
+## Tests
+
+`crates/backvault/tests/vault_*.rs` drive `export_vault_json` through a fake `HttpTransport` and a fake `Sleep`, with test-side crypto fixtures (a known master key, stretched keys, user key, and EncStrings built from them) and the SDK's published HKDF stretch vector. Every export-shape expectation is fixed in the tests as literal JSON, so a change to the shape is a visible test change rather than a silent drift; the drill against the real CLI then validates those literals.
+
 ## Retry and Failure Handling
 
 | Failure | Behaviour |
 |---------|-----------|
-| Network error, HTTP 5xx, or HTTP 429 on the token or sync request | Retry the request: 3 attempts in total, waiting 2 s then 4 s |
+| Network error (including a connect or read timeout), HTTP 5xx, or HTTP 429 on the token or sync request | Retry the request: 3 attempts in total, waiting 2 s then 4 s |
 | HTTP 400/401/403 on the token request | Fail immediately, surfacing the server's error text (bad credentials, disabled account, rejected client version, wrong scope); no retry |
 | HTTP 401/403 on the sync request | Fail immediately ("token rejected"); no re-authentication within the cycle |
 | HTTP 404 on either request | Fail immediately with a hint that `BW_SERVER` may be wrong |
 | HTTP 3xx on either request | Fail immediately naming the redirect target |
 | HTTP 200 with a non-JSON body, or JSON that is not a sync object | Fail immediately |
-| Decryption failure of `Key` or a cipher-level `key`; EncString type not implemented; blob-format cipher; unknown item type; user key of unexpected length | Fail immediately naming the item ID (where applicable) and the reason; no partial output |
+| Decryption failure of `Key` or a cipher-level `key`; EncString type not implemented; blob-format cipher; unknown item type; user key of unexpected length; date field not RFC 3339 | Fail immediately naming the item ID (where applicable) and the reason; no partial output |
 | Decryption failure of a content field or folder name | Emit `[error: cannot decrypt]`, log at ERROR, continue |
 
-Every cycle-level failure raises `BitwardenError` to backup-cycle, which turns it into a failed cycle (exit 1). The segment never writes anything itself.
+Every cycle-level failure returns a `VaultError` to backup-cycle, which turns it into a failed cycle (exit 1). The error's display form names the stage, the item ID where applicable, and the reason, and never carries secret material. The segment never writes anything itself.
 
 ## Logging and Redaction
 
-Logged at INFO: server host, KDF type and parameters, counts of folders, items exported, organization items excluded, trashed items excluded, and elapsed time per phase. Logged at WARNING: the number of exported items that carry attachments. Logged at ERROR: each undecryptable content field (item ID and field path) and, at the end of the cycle, their total; on HTTP failure, the status code, the extracted server message, and the first 500 characters of the body.
+All output goes through the `log` facade; the backend is installed once by scheduler-retention. Logged at INFO: server host, KDF type and parameters, counts of folders, items exported, organization items excluded, trashed items excluded, and elapsed time per phase. Logged at WARNING: the number of exported items that carry attachments. Logged at ERROR: each undecryptable content field (item ID and field path) and, at the end of the cycle, their total; on HTTP failure, the status code, the extracted server message, and the first 500 characters of the body.
 
 Never logged, at any level: the master password, the client secret, the access token, the master key, the stretched keys, the user key, any cipher key, any decrypted field, or the export itself.
 
@@ -174,7 +178,7 @@ Never logged, at any level: the master password, the client secret, the access t
 
 | Decision | Chosen | Alternatives Considered | Rationale |
 |----------|--------|------------------------|-----------|
-| Mechanism | Native Python client of the Bitwarden API | Drive the official `bw` CLI (the previous implementation); `rbw` | The CLI is a pkg-bundled Node binary that needs `seccomp=unconfined`, an unpinned download, and carries a Node CVE surface, and it puts the master password on argv. `rbw` has no export command. The protocol is small and fully specified by the open-source SDK, and every primitive is already a dependency (`cryptography`, `argon2-cffi`). |
+| Mechanism | Native client of the Bitwarden API inside the service binary | Drive the official `bw` CLI; `rbw`; depend on the Bitwarden SDK crates (`bitwarden-core`, `bitwarden-vault`) | The CLI is a pkg-bundled Node binary that needs `seccomp=unconfined`, an unpinned download, and carries a Node CVE surface, and it puts the master password on argv. `rbw` has no export command. The SDK crates are internal, unstable, and pull a large tree for the three operations this segment needs (tenet: *Small tree beats convenient crate*). The protocol is small and fully specified by the open-source SDK, and every primitive exists as a single-purpose RustCrypto crate. |
 | Export modes | Raw JSON only (the caller encrypts) | Also produce Bitwarden's password-protected `encrypted_json` | The portable format is restorable without Bitwarden tooling (tenet: *Portable beats native*) and is the maintainer's operational mode. The password-protected format is documented (16-byte salt, the account's KDF, `encKeyValidation_DO_NOT_EDIT`, `data`) and could be added later if a `bw import`-native file is ever wanted. |
 | Undecryptable content field | Emit `[error: cannot decrypt]`, log at ERROR, cycle succeeds | Fail the cycle | Matches the CLI's output exactly, so the drill and the importer see the same thing; keeps the DR copy fresh when one server-side value is corrupt and the operator cannot repair it. The loss is one field, named in the log. |
 | Capability gaps (blob ciphers, EncString types 1/3–7, item types 6–8, missing `Key`/`Kdf`) | Fail the cycle | Skip the item and continue | These mean BackVault needs an upgrade, not that the vault has one bad value. A silently incomplete backup defeats the project's purpose (tenet: *Restorable beats hardened*). |
@@ -182,7 +186,13 @@ Never logged, at any level: the master password, the client secret, the access t
 | Archived items | Included | Excluded like trash | The CLI's individual export has no archive filter; matching it keeps archived items restorable. |
 | Attachments | Not exported; count logged at WARNING | Download and bundle attachments | No Bitwarden export format carries attachments, and the importer cannot accept them; the warning makes the gap visible. |
 | Sync payload validation | Require `object == "sync"` and both `folders` and `ciphers` present as arrays | Default missing keys to empty lists | Defaulting could turn a proxy error page or a renamed field into a valid-looking empty export, the project's worst outcome. |
-| HTTP client | Standard library `urllib` with redirects disabled | `httpx`, `requests` | Two small requests per cycle; no new dependency to scan and pin (tenet: *Pinned beats fresh*). Refusing redirects turns a misconfigured `BW_SERVER` into a clear error instead of a silent GET against the wrong host. |
+| HTTP client | `ureq` (blocking) over `rustls`, redirect limit zero | `reqwest` + `tokio`; `hyper` directly; hand-written HTTP/1.1 over a `rustls` stream | Two small sequential requests per cycle need no async runtime; `ureq` is a small blocking client (tenet: *Small tree beats convenient crate*). Refusing redirects turns a misconfigured `BW_SERVER` into a clear error instead of a silent GET against the wrong host. |
+| TLS root store | `webpki-root-certs` (Mozilla's roots as full certificates) compiled into the binary, plus `BW_CA_CERT` appended to that one explicit list | `rustls-native-certs` reading a CA bundle from the image; `openssl` | The image then needs no certificate bundle, and the root set is a locked crate version that Renovate bumps like any other input (tenet: *Pinned beats fresh*). |
+| Cryptographic primitives | RustCrypto crates: `pbkdf2`, `argon2`, `hkdf`, `sha2`, `hmac`, `aes` + `cbc` | `ring`; `aws-lc-rs`; `openssl` | Pure Rust for every primitive this segment owns; each crate is single-purpose; `hmac`'s `verify_slice` is constant-time. The only C in the tree is `ring`, which `rustls` uses for TLS and which the Rust-on-Alpine builder compiles with the gcc it ships. |
+| Key material in memory | `Zeroizing<Vec<u8>>` and `Zeroizing<String>` for the password, client secret, token, and every derived key | Plain buffers cleared by hand | Wiping on drop makes the guarantee structural rather than a discipline; a key cannot be forgotten on an error path. |
+| JSON handling | `serde_json`: typed input structs (unknown fields ignored; `object`, `folders`, `ciphers` required) and typed output structs serialized in declaration order | Dynamic `Value` trees; the `preserve_order` feature | Typed output structs make the fixed field lists and their order a compile-time fact; required input fields make payload validation a parse failure rather than a defaulted empty vault. |
+| Date normalisation | `time` crate: parse RFC 3339, re-emit UTC with three fractional digits | `chrono`; `jiff`; a hand-written parser | Well-known-format parsing handles the six- and seven-digit fractions servers emit; a hand parser is exactly the code that mishandles an offset silently. |
+| Error type | One `VaultError` enum covering every failure class, displayed without secrets | `Box<dyn Error>`; `anyhow` | backup-cycle maps every variant to a failed cycle; the enum keeps stage and item ID structured so logs stay specific. |
 | TLS for self-signed servers | `BW_CA_CERT` path to a trusted bundle | A verify-off switch (the `NODE_TLS_REJECT_UNAUTHORIZED=0` the CLI honoured) | Disabling verification would let any host on the path read the master password hash and the vault. Trusting a named CA is the same convenience without that exposure. |
 | Device identity | UUIDv5 of the client ID, `deviceType` 25, name `backvault` | Random UUID per cycle; persisted file | Stateless yet stable: one device record and one new-device email per deployment instead of one per cycle. |
 | Email source | `MasterPasswordUnlock.Salt`, then JWT claim, then profile | Require a `BW_EMAIL` variable | No new configuration; the server already tells the client the salt it must use. |
@@ -192,14 +202,15 @@ Never logged, at any level: the master password, the client secret, the access t
 | Empty-collection shape | Pinned to the CLI release used in the pre-merge drill, recorded as a constant | Choose `[]`/`null`/omit by taste | Only the reference can settle it, and it changes between CLI releases; recording the release makes the choice auditable. |
 | Date precision | Normalise every date to milliseconds, UTC, `Z` | Pass the server's values through | The CLI emits JavaScript `toISOString()` values; the Bitwarden importer and the drill's diff both expect that shape, and servers differ (Vaultwarden microseconds, Cloud seven digits). |
 | Equivalence for the drill | Semantic (sorted, parsed) equality with `null`/`[]`/absent kept distinct | Byte-for-byte equality | Key order is an artefact of the CLI's object construction and changes between CLI releases; the importer does not depend on it. The three empty shapes stay distinct so a real divergence is not hidden. |
-| Module layout | `src/vault_client.py` (session, public API) over `src/vault_crypto.py` (keys, EncStrings), `src/vault_export.py` (shape), `src/vault_http.py` (transport, retry); the file-format code lives in backup-encryption's `src/backup_crypto.py` | One module holding the client and `encrypt_data` | The crypto, the export shape, and the transport change for different reasons and are each testable in isolation; keeping every file under 300 lines is a project quality gate. Separating `encrypt_data` lets backup-encryption's tests import the production encryptor directly. |
-| Transport injection | `export_vault_json` accepts an `http` callable (default: `urllib` with redirects disabled) and a `sleep` callable | Monkeypatch `urllib` in tests | A fake transport makes every HTTP and retry spec testable without a server and keeps the production path a single small function. |
+| Module layout | `vault/mod.rs` (public API, error type, traits) and `vault/session.rs` (one cycle) over `vault/crypto.rs` (keys, EncStrings), `vault/export/` (`shape.rs` output structs, `item.rs` per-item decryption, `mod.rs` validation and assembly), and `vault/http.rs` (transport, retry), all in the `backvault` crate's library target; the file format lives in the separate `backvault-format` crate owned by backup-encryption | One module holding the client and the encryptor; a binary-only crate | The crypto, the export shape, and the transport change for different reasons and are each testable in isolation; keeping every file under 300 lines is a project quality gate. A library target lets integration tests under `tests/` drive the real session through a fake transport, which a binary-only crate cannot offer. |
+| Transport injection | `export_vault_json` is generic over an `HttpTransport` trait (production: `ureq` with redirects disabled) and a `Sleep` trait | A process-global mock; conditional compilation | A fake transport makes every HTTP and retry spec testable without a server and keeps the production path a single small impl. |
 
 ## Open Questions & Future Decisions
 
 ### Resolved
 1. ✅ **Password-protected export is encrypted.** `bw export --format json --password <pw>` switches to the `encrypted_json` format, so the previous bitwarden mode did write an encrypted file. It is dropped for the portability reasons above, not because it was broken.
 2. ✅ **Archived items are exported** and `archivedDate` is emitted; the CLI's individual export applies no archive filter.
+3. ✅ **Key material is zeroized on drop.** Every secret lives in a `Zeroizing` container; nothing depends on a discipline of manual overwrites.
 
 ### Deferred
 1. **Bitwarden Cloud token response.** The field set above is confirmed against Vaultwarden's source. Bitwarden's hosted identity server is expected to match (the SDK consumes the same `UserDecryptionOptions`), but a live check against Cloud has not been done.
@@ -207,14 +218,14 @@ Never logged, at any level: the master password, the client secret, the access t
 3. **Argon2 memory ceiling.** Vaultwarden allows up to 1024 MiB; the container should document memory headroom for Argon2id accounts.
 4. **`uriChecksum`.** The CLI's login-URI export model carries this newer field. Confirm whether the current CLI emits it in a decrypted export and mirror it.
 5. **CLI handling of item types 6–8.** Confirm whether the CLI exports or drops them, and match once Vaultwarden serves them.
-6. **Key material in memory.** Python cannot guarantee zeroization; the client overwrites `bytearray` copies on exit but immutable `bytes` intermediates may linger until garbage collection.
-7. **Pre-merge drill tooling.** A comparison script (parse, sort, diff two exports, distinguishing `null`/`[]`/absent) belongs in the repository so the drill is repeatable; its home is decided in Phase 6.
+6. **Pre-merge drill tooling.** A comparison script (parse, sort, diff two exports, distinguishing `null`/`[]`/absent) belongs in the repository so the drill is repeatable; its home is decided in Phase 6.
 
 ## Cascade Notes
 
-- **backup-cycle**: the `bitwarden` mode and its whitelist disappear (`BACKUP_ENCRYPTION_MODE` becomes raw-only or is removed); `export_raw_encrypted`'s write tail moves fully into backup-cycle; `BW_CA_CERT` becomes an optional variable; `NODE_TLS_REJECT_UNAUTHORIZED` is no longer read.
-- **image-delivery**: the `bw` download stage, the `seccomp=unconfined` requirement in compose and docs, and the `bw --version` smoke test are removed; `IMAGE-BUILD-006`, `IMAGE-BUILD-008`, `IMAGE-RUN-001`, and `IMAGE-CI-001` carry the change.
-- **backup-encryption**: no change; it still receives a UTF-8 JSON string.
+- **backup-cycle**: calls `export_vault_json` once per cycle and maps every `VaultError` to a failed cycle; owns the intake of `BW_SERVER`, `BW_CLIENT_ID`, `BW_CLIENT_SECRET`, `BW_PASSWORD`, and `BW_CA_CERT`.
+- **scheduler-retention**: installs the `log` backend once at startup; this segment emits only through the facade.
+- **backup-encryption**: receives a UTF-8 JSON string; nothing flows the other way.
+- **delivery**: the musl static build compiles `ring` (TLS) with the C compiler the Rust-on-Alpine builder ships; nothing else in this segment needs one. The drill result pins `REFERENCE_CLI_VERSION`.
 
 ## References
 
@@ -222,4 +233,5 @@ Never logged, at any level: the master password, the client secret, the access t
 - Bitwarden CLI export: https://github.com/bitwarden/clients — `apps/cli/src/tools/export.command.ts`, `libs/tools/export-vault-core/src/services/individual-vault-export.service.ts`, `libs/common/src/models/export/*.export.ts`
 - Vaultwarden server: https://github.com/dani-garcia/vaultwarden — `src/api/identity.rs` (API-key login), `src/api/core/ciphers.rs` (sync), `src/db/models/cipher.rs` (cipher JSON)
 - Bitwarden import formats: https://bitwarden.com/help/import-data/
-- Sibling segments: backup-cycle (caller), backup-encryption (encrypts the returned string), image-delivery (loses the `bw` and seccomp requirements)
+- RustCrypto: https://github.com/RustCrypto · `ureq`: https://github.com/algesten/ureq · `zeroize`: https://docs.rs/zeroize
+- Sibling segments: backup-cycle (caller), backup-encryption (encrypts the returned string), scheduler-retention (log backend), delivery (builds the binary)

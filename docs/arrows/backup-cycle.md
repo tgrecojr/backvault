@@ -1,64 +1,60 @@
 # Arrow: backup-cycle
 
-Runs one backup: validates configuration in a fixed order, obtains the export from vault-access, encrypts it, places the `.enc` file, and reports success or failure to the supervisor.
+Runs one backup: validates configuration in a fixed order, obtains the export from vault-access, encrypts it, places the `.enc` file, and returns the path or a typed error to the supervisor.
 
 ## Status
 
-**MAPPED** — mapped and revised 2026-11-01 (raw-only mode, `BW_CA_CERT`, single vault-client call); not yet audited. 14 of 14 specs implemented and tested.
+**MAPPED** — Rust implementation complete; 16 of 16 specs implemented and tested through an injected vault client and clock.
 
 ## References
 
 ### HLD
-- docs/high-level-design.md (System Design → backup-cycle; Key Design Decision 3)
+- docs/high-level-design.md (System Design → backup-cycle; Key Design Decision 4)
 
 ### LLD
 - docs/intent/backup-cycle/backup-cycle-design.md
 
 ### EARS
-- docs/intent/backup-cycle/backup-cycle-specs.md (14 specs)
+- docs/intent/backup-cycle/backup-cycle-specs.md (16 specs)
 
 ### Tests
-- tests/test_run.py (18 tests; fake vault client, temp allowed base)
+- crates/backvault/tests/cycle.rs (22 tests; fake `VaultExporter`, fixed `Clock`, temp directory as the allowed base)
 
 ### Code
-- src/run.py (entire module)
+- crates/backvault/src/cycle/mod.rs (`CycleConfig::from_env`, `cycle::run`, `CycleError`, durable write)
+- crates/backvault/src/cycle/paths.rs (`confine_to_app`, `validate_backup_path`)
+- crates/backvault/src/env.rs (`Env` trait: `SystemEnv`, `MapEnv`)
 
 ## Architecture
 
-**Purpose:** Be the one place where a backup either happens correctly or fails loudly with exit status 1, so the supervisor can treat each cycle as an atomic attempt.
+**Purpose:** Be the one place where a backup either happens correctly or fails loudly with a typed error, so the supervisor can treat each cycle as an atomic attempt.
 
 **Key Components:**
-1. `require_env`, `validate_backup_dir`, `validate_encryption_mode`, `validate_ca_cert` — intake in that order; first failure wins.
-2. `main` — one `vault_client.export_vault_json` call, then encrypt and write.
-3. `validate_backup_path` — per-file containment and filename rules applied immediately before the write.
+1. `CycleConfig::from_env` — intake in the order required variables, `BACKUP_DIR`, mode, `BW_CA_CERT`; first failure wins; secrets as raw bytes in zeroizing buffers.
+2. `cycle::run` — one `VaultExporter` call, then encrypt, drop plaintext, write `.part` with mode `0600` and create-new, fsync, rename to `.enc`.
+3. `cycle::paths` — `/app` containment (shared with scheduler-retention) and per-file filename rules.
 
 ## Spec Coverage
 
 | Category | Spec IDs | Implemented | Deferred | Gaps |
 |----------|----------|-------------|----------|------|
-| Configuration | CYCLE-CONFIG-001 to 009 | 9 | 0 | 0 |
-| Flow and exit contract | CYCLE-FLOW-001, 003, 004 | 3 | 0 | 0 |
-| File naming and placement | CYCLE-FILE-001 to 002 | 2 | 0 | 0 |
+| Configuration | CYCLE-CONFIG-001 to 005, 007 to 010 | 9 | 0 | 0 |
+| Flow and outcome contract | CYCLE-FLOW-001, 003 to 005 | 4 | 0 | 0 |
+| File naming and placement | CYCLE-FILE-001 to 003 | 3 | 0 | 0 |
 
-**Summary:** 14 of 14 active specs implemented; every spec cited by a test.
+**Summary:** 16 of 16 active specs implemented; every spec cited by a test.
 
 ## Key Findings
 
-1. **Raw mode is the only mode.** A stale `BACKUP_ENCRYPTION_MODE=bitwarden` stops the cycle with a message explaining the raw format and its restore tool, so the operator acknowledges the restore-procedure change once.
-2. **`NODE_TLS_REJECT_UNAUTHORIZED` is inert** and produces a WARNING pointing at `BW_CA_CERT`, whose file is checked for existence before any network activity.
-3. **Two failure shapes remain** — a missing required variable raises `RuntimeError`, every other failure calls `sys.exit(1)`. The supervisor treats both as a failed cycle.
-4. **Backup file permissions are not set explicitly**; only the directory gets `0o700`, and only if created here.
-5. **`logging.basicConfig` is called in two modules** (`entrypoint.py`, `run.py`); the first call wins.
+1. **Raw mode is the only mode.** A stale `BACKUP_ENCRYPTION_MODE=bitwarden` stops the cycle with a message explaining the raw format and its restore tool.
+2. **One failure shape.** Every failure is a `CycleError` variant returned in-process; the supervisor logs it and counts a failed cycle.
+3. **Passwords are bytes.** The two passwords are read as raw OS bytes and never re-encoded, so the derived keys match what the operator set.
+4. **A file is `.enc` only when complete.** Written as `.part`, synced, then renamed; never overwritten; mode `0600`.
 
 ## Work Required
 
 ### Must Fix
 *(none)*
 
-### Should Fix
-1. Align `.env-example` (remove `BACKUP_ENCRYPTION_MODE`, `CRON_EXPRESSION`, `NODE_TLS_REJECT_UNAUTHORIZED`; add `BW_CA_CERT`; fix the `LOG_FILE` example). Blocked in the 2026-11-01 session by a tooling deny rule on `.env*` files.
-
 ### Nice to Have
-2. Set `0o600` on written backup files.
-3. Unify the failure shape (LLD Deferred 1).
-4. Retire `BACKUP_ENCRYPTION_MODE` once deployments have dropped it (LLD Deferred 8).
+1. Retire `BACKUP_ENCRYPTION_MODE` once deployments have dropped it (LLD Deferred 2).

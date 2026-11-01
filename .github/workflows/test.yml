@@ -2,60 +2,33 @@ name: Test
 
 on:
   pull_request:
+
 jobs:
-  lint:
-    name: Lint with Ruff
+  rust:
+    name: Format, lint, test
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout code
         uses: actions/checkout@v7
 
-      - name: Set up uv
-        uses: astral-sh/setup-uv@v10.3.3
-        with:
-          enable-cache: true
-          cache-dependency-glob: "uv.lock"
+      - name: Install the pinned toolchain (rust-toolchain.toml)
+        run: rustup toolchain install
 
-      - name: Install Python
-        run: uv python install 3.14
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
 
-      - name: Sync dependencies
-        run: uv sync --frozen
+      - name: Format check
+        run: cargo fmt --all -- --check
 
-      - name: Run Ruff linter
-        run: uv run ruff check src/
+      - name: Clippy (warnings denied)
+        run: cargo clippy --workspace --all-targets --locked -- -D warnings
 
-      - name: Run Ruff formatter check
-        run: uv run ruff format --check src/
-
-  pytest:
-    name: Run Unit Tests
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v7
-
-      - name: Set up uv
-        uses: astral-sh/setup-uv@v10.3.3
-        with:
-          enable-cache: true
-          cache-dependency-glob: "uv.lock"
-
-      - name: Install Python
-        run: uv python install 3.14
-
-      - name: Sync dependencies
-        run: uv sync --frozen
-
-      - name: Run pytest
-        run: uv run pytest tests/ -v --tb=short
+      - name: Tests (format fixtures and restore-tool subprocess tests included)
+        run: cargo test --workspace --locked
 
   docker-build-test:
     name: Test Docker Build
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout code
         uses: actions/checkout@v7
@@ -63,7 +36,7 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
 
-      - name: Build Docker image (amd64 only for testing)
+      - name: Build Docker image (amd64)
         uses: docker/build-push-action@v7
         with:
           context: .
@@ -74,9 +47,11 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      - name: Test image can be started
-        # Runtime is distroless — no shell. Runs under Docker's default seccomp
-        # profile; the image must not need any relaxation.
+      - name: Smoke-test the image
+        # The runtime is distroless static: no shell, one executable. `--version` is the
+        # only path that exits on its own, and it can only succeed if the binary is truly
+        # static and runs under Docker's default seccomp profile.
         run: |
-          docker run --rm --entrypoint /app/.venv/bin/python backvault:test --version
-          docker run --rm --entrypoint /app/.venv/bin/python backvault:test -c "import vault_client, backup_crypto, run; print('modules import ok')"
+          out="$(docker run --rm backvault:test --version)"
+          echo "$out"
+          case "$out" in backvault\ *) ;; *) echo "unexpected output"; exit 1;; esac
