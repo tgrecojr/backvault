@@ -29,9 +29,7 @@ fn form(body: &[u8]) -> Vec<(String, String)> {
         while i < bytes.len() {
             match bytes[i] {
                 b'+' => out.push(b' '),
-                b'%' if i + 2 < bytes.len() + 1 && i + 2 <= bytes.len() - 1
-                    || b'%' == bytes[i] && i + 2 < bytes.len() =>
-                {
+                b'%' if i + 2 < bytes.len() => {
                     let hex = std::str::from_utf8(&bytes[i + 1..i + 3]).unwrap();
                     out.push(u8::from_str_radix(hex, 16).unwrap());
                     i += 2;
